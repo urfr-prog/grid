@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proto Anneaux v9 — max 4 + implosion · ADAM Lab</title>
+    <title>Proto Anneaux v10 — drag + fusion · ADAM Lab</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
@@ -17,15 +17,22 @@
         canvas { touch-action:none; cursor:default; }
         .info {
             margin-top:10px; text-align:center;
-            color:rgba(126,200,227,0.25); font-size:0.55rem; letter-spacing:0.15em;
+            color:rgba(34,211,238,0.25); font-size:0.55rem; letter-spacing:0.15em;
         }
+        .ctrl-row { display:flex; gap:8px; justify-content:center; margin-top:8px; }
+        .dbtn {
+            background:transparent; border:1px solid rgba(34,211,238,0.25);
+            color:rgba(34,211,238,0.4); padding:4px 10px; border-radius:6px;
+            cursor:pointer; font-size:0.55rem; font-family:inherit;
+        }
+        .dbtn:hover { border-color:rgba(34,211,238,0.5); color:rgba(34,211,238,0.7); }
     </style>
 </head>
 <body>
     <canvas id="c" width="1200" height="1200"></canvas>
-    <div class="info" id="info">double-tap = plonger · tap = remonter · long-press = implosion</div>
-    <div style="margin-top:6px;text-align:center">
-        <button onclick="initPieces();particles=[];" style="background:transparent;border:1px solid rgba(126,200,227,0.25);color:rgba(126,200,227,0.4);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.55rem;font-family:inherit;">reset</button>
+    <div class="info" id="info">drag = déplacer · double-tap = plonger · tap = remonter · long-press = implosion · fusion auto</div>
+    <div class="ctrl-row">
+        <button class="dbtn" onclick="initPieces();particles=[];">reset</button>
     </div>
 
 <script>
@@ -35,26 +42,107 @@ const W = 1200, H = 1200;
 canvas.style.width = '600px';
 canvas.style.height = '600px';
 
-const R = 150;
-const GAP = R * 2 + 4;
+// ── Couleur unique silver ──
+const COL = { main:'#22d3ee', r:34, g:211, b:238 };
 
-const STATE_COLORS = {
-    white:     { main:'#7ec8e3', r:126, g:200, b:227 },
-    silver:    { main:'#22d3ee', r:34,  g:211, b:238 },
-    gold:      { main:'#ffd700', r:255, g:215, b:0 },
-    emerald:   { main:'#34d399', r:52,  g:211, b:153 },
-    cosmic:    { main:'#c4b5fd', r:196, g:181, b:253 },
-    supernovae:{ main:'#ffeb3b', r:255, g:140, b:0 },
-};
+// ── Taille v2 ──
+const R = 72;
+const GAP = 200;
 
-// Chaque pièce a entre 1 et 4 anneaux de base
+// ── Motifs médaillons (du v2) ──
+function drawMotif(ctx, idx, cx, cy, r, color, alpha) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = r * 0.045;
+
+    switch(idx % 6) {
+        case 0: // Solaris
+            ctx.beginPath(); ctx.arc(cx, cy-r*0.1, r*0.18, 0, Math.PI*2); ctx.stroke();
+            for(let i=0;i<5;i++){
+                const a = -Math.PI/2 + (i-2)*0.35;
+                ctx.beginPath();
+                ctx.moveTo(cx+Math.cos(a)*r*0.25, cy-r*0.1+Math.sin(a)*r*0.25);
+                ctx.lineTo(cx+Math.cos(a)*r*0.55, cy-r*0.1+Math.sin(a)*r*0.55);
+                ctx.stroke();
+            }
+            ctx.beginPath(); ctx.arc(cx, cy+r*0.45, r*0.22, 0, Math.PI); ctx.stroke();
+            break;
+        case 1: // Nexus
+            ctx.beginPath();
+            ctx.moveTo(cx, cy-r*0.6); ctx.lineTo(cx+r*0.4, cy-r*0.05); ctx.lineTo(cx-r*0.4, cy-r*0.05);
+            ctx.closePath(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(cx, cy-r*0.25, r*0.06, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath();
+            for(let t=0;t<4*Math.PI;t+=0.1){
+                const sr=r*0.05+t*r*0.03;
+                const sx=cx+Math.cos(t)*sr*0.5, sy=cy+r*0.4+Math.sin(t)*sr*0.3;
+                t===0?ctx.moveTo(sx,sy):ctx.lineTo(sx,sy);
+            }
+            ctx.stroke();
+            break;
+        case 2: // Chronos
+            for(let i=0;i<6;i++){
+                const a=-Math.PI+i*(Math.PI/6);
+                const ir=r*0.35, or=r*0.5;
+                ctx.beginPath();
+                ctx.moveTo(cx+Math.cos(a-0.12)*ir, cy-r*0.05+Math.sin(a-0.12)*ir);
+                ctx.lineTo(cx+Math.cos(a-0.08)*or, cy-r*0.05+Math.sin(a-0.08)*or);
+                ctx.lineTo(cx+Math.cos(a+0.08)*or, cy-r*0.05+Math.sin(a+0.08)*or);
+                ctx.lineTo(cx+Math.cos(a+0.12)*ir, cy-r*0.05+Math.sin(a+0.12)*ir);
+                ctx.stroke();
+            }
+            ctx.beginPath(); ctx.arc(cx, cy-r*0.05, r*0.35, Math.PI, 0); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cx, cy+r*0.05); ctx.lineTo(cx, cy+r*0.55); ctx.stroke();
+            ctx.beginPath(); ctx.arc(cx, cy+r*0.62, r*0.1, 0, Math.PI*2); ctx.stroke();
+            break;
+        case 3: // Aether
+            ctx.beginPath(); ctx.arc(cx, cy-r*0.2, r*0.12, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(cx, cy-r*0.2, r*0.25, 0, Math.PI*2); ctx.stroke();
+            for(let w=0;w<3;w++){
+                const wy=cy+r*0.3+w*r*0.15;
+                ctx.beginPath();
+                ctx.moveTo(cx-r*0.5, wy);
+                ctx.quadraticCurveTo(cx-r*0.25, wy-r*0.1, cx, wy);
+                ctx.quadraticCurveTo(cx+r*0.25, wy+r*0.1, cx+r*0.5, wy);
+                ctx.stroke();
+            }
+            break;
+        case 4: // Sigil
+            ctx.beginPath();
+            for(let i=0;i<6;i++){
+                const a=-Math.PI/2+i*Math.PI/3;
+                const px=cx+Math.cos(a)*r*0.3, py=cy-r*0.25+Math.sin(a)*r*0.3;
+                i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+            }
+            ctx.closePath(); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cx, cy+r*0.15); ctx.lineTo(cx, cy+r*0.65); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cx-r*0.25, cy+r*0.35); ctx.lineTo(cx+r*0.25, cy+r*0.35); ctx.stroke();
+            break;
+        case 5: // Orbis
+            ctx.beginPath();
+            ctx.moveTo(cx-r*0.45, cy-r*0.2);
+            ctx.quadraticCurveTo(cx, cy-r*0.55, cx+r*0.45, cy-r*0.2);
+            ctx.quadraticCurveTo(cx, cy+r*0.05, cx-r*0.45, cy-r*0.2);
+            ctx.stroke();
+            ctx.beginPath(); ctx.arc(cx, cy-r*0.2, r*0.12, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(cx, cy+r*0.7, r*0.4, -Math.PI*0.85, -Math.PI*0.15); ctx.stroke();
+            break;
+    }
+    ctx.restore();
+}
+
+// ── Pièces ──
 const PIECE_DEFS = [
-    { rings: 2, state:'white' },
-    { rings: 3, state:'silver' },
-    { rings: 1, state:'gold' },
-    { rings: 4, state:'emerald' },
-    { rings: 2, state:'cosmic' },
-    { rings: 3, state:'supernovae' },
+    { rings: 2, motif: 0 },
+    { rings: 3, motif: 1 },
+    { rings: 1, motif: 2 },
+    { rings: 4, motif: 3 },
+    { rings: 2, motif: 4 },
+    { rings: 3, motif: 5 },
 ];
 
 let pieces = [];
@@ -80,9 +168,9 @@ function implodePiece(p) {
     p.implode = 0;
 }
 
-// ── Particules d'implosion ──
+// ── Particules ──
 let particles = [];
-function spawnImplosionParticles(p, col) {
+function spawnImplosionParticles(p) {
     for(let i = 0; i < 16; i++) {
         const a = Math.random() * Math.PI * 2;
         const speed = 0.5 + Math.random() * 2;
@@ -91,57 +179,143 @@ function spawnImplosionParticles(p, col) {
             y: p.y + Math.sin(a) * R * 0.3,
             vx: -Math.cos(a) * speed,
             vy: -Math.sin(a) * speed,
-            life: 1.0, color: col, size: 2 + Math.random() * 3,
+            life: 1.0, color: COL.main, size: 2 + Math.random() * 3,
         });
     }
 }
 
-// ── Interaction : pointerdown (long-press) + pointerup (tap/double-tap) ──
+// ── Grille : snap ──
+function snapToGrid(x, y) {
+    const cx = W/2, cy = H/2;
+    const col = Math.round((x - cx) / GAP);
+    const row = Math.round((y - cy) / GAP);
+    return { x: cx + col * GAP, y: cy + row * GAP, col, row };
+}
+
+function getPieceAt(col, row) {
+    for (const p of pieces) {
+        if (p.dead) continue;
+        const g = snapToGrid(p.x, p.y);
+        if (g.col === col && g.row === row) return p;
+    }
+    return null;
+}
+
+// ── Fusion ──
+function checkFusion(piece) {
+    const g = snapToGrid(piece.x, piece.y);
+    const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
+    for (const [dc, dr] of dirs) {
+        const neighbor = getPieceAt(g.col + dc, g.row + dr);
+        if (neighbor && !neighbor.dead && !neighbor.imploding && neighbor !== piece) {
+            if (neighbor.rings === piece.rings && !piece.imploding && !piece.dead) {
+                piece.rings = Math.min(4, piece.rings + 1);
+                piece.tapFlash = 1.0;
+                implodePiece(neighbor);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// ── Interaction : drag + tap + double-tap + long-press ──
 let lastTapTime = 0, lastTapPiece = null;
 let pressTimer = null, pressTarget = null;
+let dragging = null, dragOffX = 0, dragOffY = 0, dragMoved = false;
+let dragOrigX = 0, dragOrigY = 0;
 
 canvas.addEventListener('pointerdown', e => {
     const rect = canvas.getBoundingClientRect();
-    const mx = (e.clientX-rect.left)/rect.width*W;
-    const my = (e.clientY-rect.top)/rect.height*H;
+    const mx = (e.clientX - rect.left) / rect.width * W;
+    const my = (e.clientY - rect.top) / rect.height * H;
     let hit = null;
-    for(const p of pieces) if(!p.dead && Math.hypot(mx-p.x, my-p.y) < R*0.93) { hit=p; break; }
-    if(!hit) return;
+    for (const p of pieces) if (!p.dead && !p.imploding && Math.hypot(mx - p.x, my - p.y) < R * 0.93) { hit = p; break; }
+    if (!hit) return;
+
+    canvas.setPointerCapture(e.pointerId);
+    dragging = hit;
+    dragOffX = hit.x - mx;
+    dragOffY = hit.y - my;
+    dragOrigX = hit.x;
+    dragOrigY = hit.y;
+    dragMoved = false;
+
     pressTarget = hit;
     pressTimer = setTimeout(() => {
-        implodePiece(hit);
+        if (!dragMoved) {
+            implodePiece(hit);
+            dragging = null;
+        }
         pressTimer = null;
         pressTarget = null;
     }, 500);
 });
 
-canvas.addEventListener('pointerup', e => {
-    if(pressTimer) {
-        clearTimeout(pressTimer);
-        pressTimer = null;
+canvas.addEventListener('pointermove', e => {
+    if (!dragging || dragging.dead || dragging.imploding) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / rect.width * W;
+    const my = (e.clientY - rect.top) / rect.height * H;
+
+    const newX = mx + dragOffX;
+    const newY = my + dragOffY;
+    const dist = Math.hypot(newX - dragOrigX, newY - dragOrigY);
+
+    if (dist > 10) {
+        dragMoved = true;
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; pressTarget = null; }
     }
-    if(!pressTarget || pressTarget.dead || pressTarget.imploding) { pressTarget=null; return; }
+
+    if (dragMoved) {
+        dragging.x = newX;
+        dragging.y = newY;
+    }
+});
+
+canvas.addEventListener('pointerup', e => {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+
+    if (dragging && dragMoved) {
+        const snap = snapToGrid(dragging.x, dragging.y);
+        const occupant = getPieceAt(snap.col, snap.row);
+        if (occupant && occupant !== dragging) {
+            dragging.x = dragOrigX;
+            dragging.y = dragOrigY;
+        } else {
+            dragging.x = snap.x;
+            dragging.y = snap.y;
+            checkFusion(dragging);
+        }
+        dragging = null;
+        pressTarget = null;
+        return;
+    }
+
+    if (!pressTarget || pressTarget.dead || pressTarget.imploding) { pressTarget = null; dragging = null; return; }
     const hit = pressTarget;
     pressTarget = null;
+    dragging = null;
 
     const now = performance.now();
-    if(lastTapPiece===hit && (now-lastTapTime)<350) {
-        if(hit.depthTarget<2 && hit.transDir===0) {
-            hit.depthTarget=hit.depth+1; hit.transDir=1; hit.depthAnim=0;
+    if (lastTapPiece === hit && (now - lastTapTime) < 350) {
+        if (hit.depthTarget < 2 && hit.transDir === 0) {
+            hit.depthTarget = hit.depth + 1; hit.transDir = 1; hit.depthAnim = 0;
         }
-        lastTapPiece=null; lastTapTime=0;
+        lastTapPiece = null; lastTapTime = 0;
     } else {
-        if(hit.depth>0 && hit.transDir===0) {
-            hit.depthTarget=hit.depth-1; hit.transDir=-1; hit.depthAnim=0;
+        if (hit.depth > 0 && hit.transDir === 0) {
+            hit.depthTarget = hit.depth - 1; hit.transDir = -1; hit.depthAnim = 0;
         }
         hit.tapFlash = 1.0;
-        lastTapPiece=hit; lastTapTime=now;
+        lastTapPiece = hit; lastTapTime = now;
     }
 });
 
 canvas.addEventListener('pointercancel', () => {
-    if(pressTimer) clearTimeout(pressTimer);
-    pressTimer=null; pressTarget=null;
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = null; pressTarget = null;
+    if (dragging) { dragging.x = dragOrigX; dragging.y = dragOrigY; dragging = null; }
 });
 
 function lerp(a,b,t){return a+(b-a)*t;}
@@ -149,7 +323,6 @@ function easeIO(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
 
 // ═══ RINGS — max 4, rétrécissement progressif ═══
 function buildRings(baseCount, depth) {
-    // Ajouter 1 anneau par niveau, plafonné à 4
     const total = Math.min(4, baseCount + Math.round(depth));
     const outerMax = 0.88 - depth * 0.10;
     const innerMin = 0.10;
@@ -180,16 +353,37 @@ function draw(ts) {
     ctx.fillStyle = '#0c0d14';
     ctx.fillRect(0,0,W,H);
 
-    pieces.forEach((p, pi) => {
+    // ── Grille de fond ──
+    const gcx = W/2, gcy = H/2;
+    const gridRange = 3;
+    for (let gc = -gridRange; gc <= gridRange; gc++) {
+        for (let gr = -gridRange; gr <= gridRange; gr++) {
+            const gx = gcx + gc * GAP;
+            const gy = gcy + gr * GAP;
+            ctx.beginPath();
+            ctx.arc(gx, gy, R * 0.93, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(${COL.r},${COL.g},${COL.b},0.04)`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+        }
+    }
+
+    // Z-order : pièce draggée au-dessus
+    const sortedPieces = [...pieces].sort((a, b) => {
+        if (a === dragging) return 1;
+        if (b === dragging) return -1;
+        return 0;
+    });
+
+    sortedPieces.forEach((p, pi) => {
         if(p.dead) return;
-        const col = STATE_COLORS[p.state];
 
         // ── Implosion ──
         if(p.imploding) {
             p.implode += dt * 0.7;
             if(p.implode >= 1) {
                 p.dead = true; p.imploding = false;
-                spawnImplosionParticles(p, col.main);
+                spawnImplosionParticles(p);
                 return;
             }
             const ease = p.implode * p.implode;
@@ -229,13 +423,13 @@ function draw(ts) {
             const ghostOp = 0.04 + curDepth * 0.02;
             ctx.beginPath();
             ctx.arc(p.x, p.y, pR * 0.88, 0, Math.PI*2);
-            ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${ghostOp.toFixed(3)})`;
+            ctx.strokeStyle = `rgba(${COL.r},${COL.g},${COL.b},${ghostOp.toFixed(3)})`;
             ctx.lineWidth = 0.8;
             ctx.stroke();
             if(curDepth > 0.8) {
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, pR * 0.83, 0, Math.PI*2);
-                ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${(ghostOp*0.5).toFixed(3)})`;
+                ctx.strokeStyle = `rgba(${COL.r},${COL.g},${COL.b},${(ghostOp*0.5).toFixed(3)})`;
                 ctx.lineWidth = 0.5;
                 ctx.stroke();
             }
@@ -245,20 +439,19 @@ function draw(ts) {
         const glowR = pR * outerEdge * 0.9;
         const glowOp = 0.10 + curDepth * 0.12;
         const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowR);
-        grd.addColorStop(0, `rgba(${col.r},${col.g},${col.b},${Math.min(0.55,glowOp).toFixed(3)})`);
-        grd.addColorStop(0.5, `rgba(${col.r},${col.g},${col.b},${(glowOp*0.35).toFixed(3)})`);
+        grd.addColorStop(0, `rgba(${COL.r},${COL.g},${COL.b},${Math.min(0.55,glowOp).toFixed(3)})`);
+        grd.addColorStop(0.5, `rgba(${COL.r},${COL.g},${COL.b},${(glowOp*0.35).toFixed(3)})`);
         grd.addColorStop(1, 'rgba(12,13,20,0)');
         ctx.fillStyle = grd;
         ctx.beginPath();
         ctx.arc(p.x, p.y, glowR, 0, Math.PI*2);
         ctx.fill();
 
-        // ── Inter-anneaux ──
+        // ── Inter-anneaux (ondes) ──
         for(let ri = 0; ri < curRings.length - 1; ri++) {
             let outerR = pR * curRings[ri];
             let innerR = pR * curRings[ri+1];
 
-            // Implosion : convergence
             if(p.imploding) {
                 const prog = p.implode;
                 const ringProg = Math.min(1, prog * (1.5 + ri * 0.4));
@@ -274,10 +467,10 @@ function draw(ts) {
             // Glow diffus
             const bandOp = (0.04 + curDepth * 0.03 + ri * 0.005) * (0.5 + pulse * 0.5);
             const bGrd = ctx.createRadialGradient(p.x, p.y, innerR, p.x, p.y, outerR);
-            bGrd.addColorStop(0, `rgba(${col.r},${col.g},${col.b},0)`);
-            bGrd.addColorStop(0.35, `rgba(${col.r},${col.g},${col.b},${bandOp.toFixed(3)})`);
-            bGrd.addColorStop(0.65, `rgba(${col.r},${col.g},${col.b},${(bandOp*0.7).toFixed(3)})`);
-            bGrd.addColorStop(1, `rgba(${col.r},${col.g},${col.b},0)`);
+            bGrd.addColorStop(0, `rgba(${COL.r},${COL.g},${COL.b},0)`);
+            bGrd.addColorStop(0.35, `rgba(${COL.r},${COL.g},${COL.b},${bandOp.toFixed(3)})`);
+            bGrd.addColorStop(0.65, `rgba(${COL.r},${COL.g},${COL.b},${(bandOp*0.7).toFixed(3)})`);
+            bGrd.addColorStop(1, `rgba(${COL.r},${COL.g},${COL.b},0)`);
             ctx.fillStyle = bGrd;
             ctx.beginPath();
             ctx.arc(p.x, p.y, outerR, 0, Math.PI*2);
@@ -291,11 +484,11 @@ function draw(ts) {
             const wThick = 1.0 + curDepth * 0.4;
             ctx.beginPath();
             ctx.arc(p.x, p.y, w1R, 0, Math.PI*2);
-            ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${w1Op.toFixed(3)})`;
+            ctx.strokeStyle = `rgba(${COL.r},${COL.g},${COL.b},${w1Op.toFixed(3)})`;
             ctx.lineWidth = wThick;
             ctx.stroke();
 
-            // Onde 2 (cumul depth > 0.5)
+            // Onde 2
             if(curDepth > 0.5) {
                 const w2Phase = (t * 1.1 + ri * 2.1 + pi * 0.7) % (Math.PI*2);
                 const w2Frac = 0.5 + 0.5 * Math.sin(w2Phase);
@@ -303,12 +496,12 @@ function draw(ts) {
                 const w2Op = w1Op * 0.4 * Math.min(1, (curDepth - 0.5) * 2);
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, w2R, 0, Math.PI*2);
-                ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${w2Op.toFixed(3)})`;
+                ctx.strokeStyle = `rgba(${COL.r},${COL.g},${COL.b},${w2Op.toFixed(3)})`;
                 ctx.lineWidth = wThick * 0.6;
                 ctx.stroke();
             }
 
-            // Onde 3 (cumul depth > 1.3)
+            // Onde 3
             if(curDepth > 1.3) {
                 const w3Phase = (t * 1.5 + ri * 0.9 + pi * 1.1) % (Math.PI*2);
                 const w3Frac = 0.5 + 0.5 * Math.sin(w3Phase);
@@ -316,7 +509,7 @@ function draw(ts) {
                 const w3Op = 0.04 * Math.min(1, (curDepth - 1.3) * 3);
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, w3R, 0, Math.PI*2);
-                ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${w3Op.toFixed(3)})`;
+                ctx.strokeStyle = `rgba(${COL.r},${COL.g},${COL.b},${w3Op.toFixed(3)})`;
                 ctx.lineWidth = wThick * 0.4;
                 ctx.stroke();
             }
@@ -341,7 +534,6 @@ function draw(ts) {
                 : 2.0 + (curRings.length-ri)*0.25 + curDepth*0.25;
             thick += breath * 0.3;
 
-            // Implosion : convergence + rotation + épaississement
             if(p.imploding) {
                 const prog = p.implode;
                 const ringProg = Math.min(1, prog * (1.5 + ri * 0.4));
@@ -371,7 +563,7 @@ function draw(ts) {
             if(rr > 1 && op > 0.01) {
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, rr, 0, Math.PI*2);
-                ctx.strokeStyle = col.main;
+                ctx.strokeStyle = COL.main;
                 ctx.globalAlpha = Math.min(0.85, op);
                 ctx.lineWidth = Math.max(0.5, thick);
                 ctx.stroke();
@@ -381,14 +573,21 @@ function draw(ts) {
             if(p.imploding || p.transDir !== 0) ctx.restore();
         });
 
+        // ── Motif central ──
+        if(!p.imploding || p.implode < 0.7) {
+            const motifAlpha = p.imploding ? Math.max(0, 1 - p.implode * 1.8) : 0.6 + curDepth * 0.15;
+            const motifR = pR * 0.75;
+            drawMotif(ctx, p.motif, p.x, p.y, motifR, COL.main, motifAlpha);
+        }
+
         // ── Noyau ──
         const coreR = pR * (curRings[curRings.length-1] || 0.10);
         const corePulse = 0.5 + 0.5 * Math.sin(t * 2.0 + pi);
         const coreGlowOp = 0.12 + curDepth * 0.18;
         const coreGlowR = coreR * (1.5 + curDepth * 0.5);
         const cGrd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, Math.max(1,coreGlowR));
-        cGrd.addColorStop(0, `rgba(${col.r},${col.g},${col.b},${(coreGlowOp*(0.6+corePulse*0.4)).toFixed(3)})`);
-        cGrd.addColorStop(1, `rgba(${col.r},${col.g},${col.b},0)`);
+        cGrd.addColorStop(0, `rgba(${COL.r},${COL.g},${COL.b},${(coreGlowOp*(0.6+corePulse*0.4)).toFixed(3)})`);
+        cGrd.addColorStop(1, `rgba(${COL.r},${COL.g},${COL.b},0)`);
         ctx.fillStyle = cGrd;
         ctx.beginPath();
         ctx.arc(p.x, p.y, Math.max(1,coreGlowR), 0, Math.PI*2);
@@ -397,7 +596,7 @@ function draw(ts) {
         const dotR = Math.max(1, coreR*0.3 + corePulse*coreR*0.2 + curDepth*2);
         ctx.beginPath();
         ctx.arc(p.x, p.y, dotR, 0, Math.PI*2);
-        ctx.fillStyle = col.main;
+        ctx.fillStyle = COL.main;
         ctx.globalAlpha = 0.2 + curDepth*0.25 + corePulse*0.15;
         ctx.fill();
         ctx.globalAlpha = 1;
@@ -412,35 +611,43 @@ function draw(ts) {
 
         ctx.restore();
 
-        // Bordure — s'intensifie pendant implosion
+        // Bordure
         ctx.beginPath();
         ctx.arc(p.x, p.y, pR*0.93, 0, Math.PI*2);
-        ctx.strokeStyle = col.main;
+        ctx.strokeStyle = COL.main;
         ctx.globalAlpha = p.imploding ? 0.5 + p.implode*0.5 : 0.25 + curDepth*0.05;
         ctx.lineWidth = p.imploding ? 2 + p.implode*3 : 1.8;
         ctx.stroke();
         ctx.globalAlpha = 1;
 
-        // Flash final d'implosion
+        // Flash implosion
         if(p.imploding && p.implode > 0.8) {
             const flash = (p.implode - 0.8) / 0.2;
             ctx.beginPath();
             ctx.arc(p.x, p.y, pR * 2 * (1 - flash), 0, Math.PI*2);
-            ctx.fillStyle = col.main;
+            ctx.fillStyle = COL.main;
             ctx.globalAlpha = flash * 0.3;
             ctx.fill();
             ctx.globalAlpha = 1;
         }
 
-        // Dots (pas pendant implosion)
+        // Dots depth
         if(!p.imploding) {
             const aD = p.transDir!==0 ? p.depthTarget : p.depth;
             for(let d=0;d<3;d++){
                 ctx.beginPath();
                 ctx.arc(p.x-8+d*8, p.y+R*0.75, 2.5, 0, Math.PI*2);
-                if(d<=aD){ ctx.fillStyle=col.main; ctx.globalAlpha=0.4; ctx.fill(); }
-                else { ctx.strokeStyle=col.main; ctx.globalAlpha=0.12; ctx.lineWidth=0.8; ctx.stroke(); }
+                if(d<=aD){ ctx.fillStyle=COL.main; ctx.globalAlpha=0.4; ctx.fill(); }
+                else { ctx.strokeStyle=COL.main; ctx.globalAlpha=0.12; ctx.lineWidth=0.8; ctx.stroke(); }
             }
+            ctx.globalAlpha = 1;
+
+            // Label rings
+            ctx.fillStyle = COL.main;
+            ctx.globalAlpha = 0.15;
+            ctx.font = '16px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText(p.rings + 'r', p.x, p.y + R + 18);
             ctx.globalAlpha = 1;
         }
     });
