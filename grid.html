@@ -144,7 +144,7 @@ function cellToLocal(col,row){ return { x:(col-(COLS-1)/2)*CELL_W, y:((ROWS-1)/2
 function getPos(i){ return {col:i%COLS,row:Math.floor(i/COLS)}; }
 function getIdx(col,row){ return (col<0||col>=COLS||row<0||row>=ROWS)?-1:row*COLS+col; }
 
-const SAT_DEPTH=0.08, SAT_LIFT=0.06, SZ=CELL_W*0.92, RR=0.1;
+const SAT_DEPTH=0.02, SAT_LIFT=0.012, SZ=CELL_W*0.92, RR=0.1;
 function rrShape(w,h,r){ const s=new THREE.Shape(),hw=w/2,hh=h/2;
   s.moveTo(-hw+r,-hh);s.lineTo(hw-r,-hh);s.quadraticCurveTo(hw,-hh,hw,-hh+r);s.lineTo(hw,hh-r);
   s.quadraticCurveTo(hw,hh,hw-r,hh);s.lineTo(-hw+r,hh);s.quadraticCurveTo(-hw,hh,-hw,hh-r);
@@ -186,7 +186,7 @@ function assignFaces(){
     if(e){ const q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),FACE_ROT[e[1]]);
       g.position.copy(new THREE.Vector3(0,0,HALF+0.004).applyQuaternion(q)); g.quaternion.copy(q); g.visible=true; } else g.visible=false; });
   boards.forEach((arr,f)=>{ const e=faceMap.find(x=>x[0]===f);
-    arr.forEach(p=>{ if(!p)return; if(e){ placePiece(p,FACE_ROT[e[1]]); p.mesh.visible=true; } else p.mesh.visible=false; }); });
+    arr.forEach(p=>{ if(!p)return; if(e){ placePiece(p,FACE_ROT[e[1]]); p.faceSlot=e[1]; p.mesh.visible=true; } else p.mesh.visible=false; }); });
 }
 
 let busy=false, isAnimating=false, navDir=0;
@@ -201,36 +201,126 @@ function onRotationComplete(){ currentBoard=mod(currentBoard+navDir); cubeGroup.
 function curBoard(){ return boards[currentBoard]; }
 function cardinalNeighbors(i){ const r=[]; if(i>=COLS)r.push(i-COLS); if(i+COLS<TOTAL)r.push(i+COLS); if(i%COLS>0)r.push(i-1); if(i%COLS<COLS-1)r.push(i+1); return r; }
 
+// ─── FRANCHISSEMENT DE BORD (migration vers face voisine) ───
+// Seulement horizontal : dc=+1 sort par la droite → voisin current+1, colonne 0 ;
+// dc=-1 sort par la gauche → voisin current-1, dernière colonne. Même ligne (row).
+// Retourne {board, idx} de la case d'arrivée, ou null si pas franchissable / occupée.
+function crossTarget(row, dc){
+  if(dc!==1 && dc!==-1) return null;
+  const nb = mod(currentBoard + dc);
+  const col = (dc===1) ? 0 : COLS-1;
+  const idx = getIdx(col,row);
+  return {board:nb, idx};
+}
+// migre une pièce (objet) vers (board,idx). Détache de l'ancien board, attache au nouveau.
+function moveToBoard(p, oldBoard, oldIdx, newBoard, newIdx){
+  boards[oldBoard][oldIdx]=null;
+  boards[newBoard][newIdx]=p;
+  p.face=newBoard;
+}
+
 let swapAnim=null;
+
 function trySwipe(i,dc,dr){
   const pieces=curBoard(); const p=pieces[i];
   if(!canMove(p)||busy||isAnimating||swapAnim)return false;
   const dirs=MOVE_DIRS[p.state]; if(!dirs)return false;
   let ok=false; for(const[a,b]of dirs){ if(a===dc&&b===dr){ok=true;break;} } if(!ok)return false;
-  const {col,row}=getPos(i); const ni=getIdx(col+dc,row+dr); if(ni===-1)return false;
+  const {col,row}=getPos(i); const ni=getIdx(col+dc,row+dr);
   const blockSame=(p.state==='silver'||p.state==='gold'||p.state==='emerald');
+
+  // ── Sortie par un bord latéral (gauche/droite) => tentative de franchissement ──
+  const crossing = (ni===-1 && dr===0 && (dc===1||dc===-1));
+
   if(p.state==='supernovae'){
-    if(pieces[ni]){ const chain=[ni]; let cx=col+dc,cy=row+dr;
-      while(true){cx+=dc;cy+=dr;const n=getIdx(cx,cy);if(n===-1||!pieces[n])break;chain.push(n);}
-      const lp=getPos(chain[chain.length-1]); if(getIdx(lp.col+dc,lp.row+dr)===-1){showToast('Nova bloqué !');return false;}
-      animateMove(()=>{ for(let z=chain.length-1;z>=0;z--){const from=chain[z],fp=getPos(from);const to=getIdx(fp.col+dc,fp.row+dr);pieces[to]=pieces[from];pieces[from]=null;if(pieces[to])pieces[to].face=currentBoard;}
-        pieces[ni]=pieces[i];pieces[i]=null;if(pieces[ni])pieces[ni].face=currentBoard; });
-    } else animateMove(()=>{ pieces[ni]=pieces[i];pieces[i]=null;if(pieces[ni])pieces[ni].face=currentBoard; });
+    // chaîne sur la face courante
+    const chain=[]; if(pieces[ni]){ chain.push(ni); let cx=col+dc,cy=row+dr; while(true){cx+=dc;cy+=dr;const n=getIdx(cx,cy);if(n===-1||!pieces[n])break;chain.push(n);} }
+    const lastIdx = chain.length?chain[chain.length-1]:i;
+    const lp=getPos(lastIdx);
+    const lastNext=getIdx(lp.col+dc,lp.row+dr);
+    if(lastNext===-1){
+      // la chaîne touche le bord : franchissement de la dernière pièce
+      if(!crossing && !(dr===0&&(dc===1||dc===-1))){ showToast('Nova bloqué !'); return false; }
+      const ct=crossTarget(lp.row,dc);
+      if(!ct || boards[ct.board][ct.idx]){ showToast('Nova bloqué !'); return false; }
+      // migrer la dernière pièce vers le voisin, avancer le reste, puis avancer p
+      const migr=pieces[lastIdx];
+      doCrossMove(()=>{
+        if(chain.length){
+          moveToBoard(migr, currentBoard, lastIdx, ct.board, ct.idx);
+          for(let z=chain.length-2;z>=0;z--){ const from=chain[z],fp=getPos(from);const to=getIdx(fp.col+dc,fp.row+dr);pieces[to]=pieces[from];pieces[from]=null;if(pieces[to])pieces[to].face=currentBoard; }
+          pieces[ni]=pieces[i];pieces[i]=null;if(pieces[ni])pieces[ni].face=currentBoard;
+        } else {
+          // p elle-même franchit
+          moveToBoard(p, currentBoard, i, ct.board, ct.idx);
+        }
+      }, dc);
+      return true;
+    }
+    // pas de bord : push normal
+    animateMove(()=>{ for(let z=chain.length-1;z>=0;z--){const from=chain[z],fp=getPos(from);const to=getIdx(fp.col+dc,fp.row+dr);pieces[to]=pieces[from];pieces[from]=null;if(pieces[to])pieces[to].face=currentBoard;}
+      if(chain.length){pieces[ni]=pieces[i];pieces[i]=null;if(pieces[ni])pieces[ni].face=currentBoard;}
+      else {pieces[ni]=pieces[i];pieces[i]=null;if(pieces[ni])pieces[ni].face=currentBoard;} });
     return true;
   }
+
   if(p.state==='plasma'){
     const fwd=[]; if(pieces[ni]){fwd.push(ni);let cx=col+dc,cy=row+dr;while(true){cx+=dc;cy+=dr;const n=getIdx(cx,cy);if(n===-1||!pieces[n])break;fwd.push(n);}}
     const bwd=[]; {let bx=col-dc,by=row-dr;while(true){const n=getIdx(bx,by);if(n===-1||!pieces[n])break;bwd.push(n);bx-=dc;by-=dr;}}
-    if(fwd.length){const lp=getPos(fwd[fwd.length-1]);if(getIdx(lp.col+dc,lp.row+dr)===-1){showToast('Plasma bloqué !');return false;}}
+    const lastIdx=fwd.length?fwd[fwd.length-1]:i;
+    const lp=getPos(lastIdx);
+    const lastNext=getIdx(lp.col+dc,lp.row+dr);
+    if(lastNext===-1){
+      // franchissement plasma (pièce de tête de chaîne avant)
+      if(!(dr===0&&(dc===1||dc===-1))){ showToast('Plasma bloqué !'); return false; }
+      const ct=crossTarget(lp.row,dc);
+      if(!ct || boards[ct.board][ct.idx]){ showToast('Plasma bloqué !'); return false; }
+      const migr=pieces[lastIdx];
+      doCrossMove(()=>{
+        if(fwd.length){
+          moveToBoard(migr, currentBoard, lastIdx, ct.board, ct.idx);
+          for(let z=fwd.length-2;z>=0;z--){ const from=fwd[z],fp=getPos(from);const to=getIdx(fp.col+dc,fp.row+dr);pieces[to]=pieces[from];pieces[from]=null;if(pieces[to])pieces[to].face=currentBoard; }
+          pieces[ni]=pieces[i];pieces[i]=null;if(pieces[ni])pieces[ni].face=currentBoard;
+        } else {
+          moveToBoard(p, currentBoard, i, ct.board, ct.idx);
+        }
+        // chaîne arrière avance d'un cran (reste sur la face courante)
+        for(let z=0;z<bwd.length;z++){ const from=bwd[z],fp=getPos(from);const to=getIdx(fp.col+dc,fp.row+dr);pieces[to]=pieces[from];pieces[from]=null;if(pieces[to])pieces[to].face=currentBoard; }
+      }, dc);
+      return true;
+    }
     animateMove(()=>{ for(let z=fwd.length-1;z>=0;z--){const from=fwd[z],fp=getPos(from);const to=getIdx(fp.col+dc,fp.row+dr);pieces[to]=pieces[from];pieces[from]=null;if(pieces[to])pieces[to].face=currentBoard;}
       pieces[ni]=pieces[i];pieces[i]=null;if(pieces[ni])pieces[ni].face=currentBoard;
       for(let z=0;z<bwd.length;z++){const from=bwd[z],fp=getPos(from);const to=getIdx(fp.col+dc,fp.row+dr);pieces[to]=pieces[from];pieces[from]=null;if(pieces[to])pieces[to].face=currentBoard;} });
     return true;
   }
+
+  // ── États simples : silver / gold / emerald / cosmic ──
+  if(crossing){
+    // franchissement de la pièce elle-même
+    const ct=crossTarget(row,dc);
+    if(!ct || boards[ct.board][ct.idx]){ showToast('Bord bloqué !'); return false; }
+    doCrossMove(()=>{ moveToBoard(p, currentBoard, i, ct.board, ct.idx); }, dc);
+    return true;
+  }
+  if(ni===-1) return false; // bord haut/bas ou diagonale hors-grille : pas de franchissement
   if(pieces[ni]){ if(blockSame&&pieces[ni].state===p.state)return false;
     animateMove(()=>{ const t=pieces[i];pieces[i]=pieces[ni];pieces[ni]=t; if(pieces[i])pieces[i].face=currentBoard; if(pieces[ni])pieces[ni].face=currentBoard; });
   } else animateMove(()=>{ pieces[ni]=pieces[i];pieces[i]=null;if(pieces[ni])pieces[ni].face=currentBoard; });
   return true;
+}
+
+// Mutation avec franchissement : applique, replace tout, puis fait tourner le cube
+// pour suivre la pièce sur sa nouvelle face (dc=+1 → navRight, dc=-1 → navLeft).
+function doCrossMove(mutator, dc){
+  busy=true;
+  mutator(); moves++;
+  // replacer toutes les pièces de toutes les faces (positions logiques)
+  assignFaces();
+  busy=false;
+  // rotation auto pour suivre
+  if(dc===1) navRight(); else navLeft();
+  setTimeout(()=>{ updateUI(); }, 20);
 }
 
 function animateMove(mutator){
@@ -360,7 +450,13 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
       ud.glow.material.color.set(st==='cosmic'?0x8338ec:st==='supernovae'?0xff8c00:0xff2060); ud.glow.material.opacity=pp;
       ud.edge.material.color.set(st==='cosmic'?0xc4b5fd:st==='supernovae'?0xffeb3b:0xff2060); ud.edge.material.opacity=0.35+Math.sin(t*2.5)*0.12;
     } else if(st!=='white'){ const eCol=st==='silver'?0x22d3ee:st==='gold'?0xffd700:0x34d399; ud.edge.material.color.set(eCol); ud.edge.material.opacity=0.22; ud.glow.material.opacity=0;
-    } else { ud.edge.material.opacity=0.15; ud.glow.material.opacity=0; } }));
+    } else { ud.edge.material.opacity=0.15; ud.glow.material.opacity=0; }
+    // Atténuation de la face arrière (clairement en retrait)
+    const dim = (p.faceSlot===2) ? 0.4 : 1.0;
+    ud.faceMesh.material.opacity = dim;
+    ud.edge.material.opacity *= dim;
+    ud.glow.material.opacity *= dim;
+  }));
   renderer.render(scene,camera);
 }
 buildBoards(); assignFaces(); buildLegend(); updateUI(); updateBgVis(); animate();
