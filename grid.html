@@ -35,19 +35,8 @@
 </style>
 </head>
 <body>
-  <div class="info-bar">
-    <div>Tableau: <span id="stat-board">1 / 4</span></div>
-    <div>Coups: <span id="stat-moves">0</span></div>
-    <div>Pièces: <span id="stat-pieces">0</span></div>
-  </div>
   <canvas id="c" width="1200" height="1200"></canvas>
   <div class="nav-dots" id="navDots"></div>
-  <div class="hint">← glissez horizontalement (hors pièce) pour tourner le cube →</div>
-  <div class="ctrl-row">
-    <button class="dbtn" id="btnReset">↺ reset</button>
-    <button class="dbtn" id="btnBg">fond: étoiles ✦</button>
-  </div>
-  <div class="legend" id="legend"></div>
   <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -176,7 +165,7 @@ function placePiece(p,faceRotY){ if(!p||!p.mesh)return;
   const q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),faceRotY);
   const qz=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),(p.rotation||0)*Math.PI/180);
   const qf=q.clone().multiply(qz);
-  p.mesh.position.copy(new THREE.Vector3(x,y,HALF+SAT_LIFT).applyQuaternion(q)); p.mesh.quaternion.copy(qf); p.baseQuat=qf.clone();
+  p.mesh.position.copy(new THREE.Vector3(x,y,HALF+SAT_LIFT).applyQuaternion(q)); p.mesh.quaternion.copy(qf); p.baseQuat=qf.clone(); p._settle=clock.getElapsedTime();
 }
 function mod(n){ return ((n%NBOARDS)+NBOARDS)%NBOARDS; }
 
@@ -191,10 +180,12 @@ function assignFaces(){
 
 let busy=false, isAnimating=false, navDir=0;
 const targetQuat=new THREE.Quaternion();
-function navRight(){ if(busy||isAnimating||swapAnim)return; busy=true;isAnimating=true;navDir=1;
-  targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0),-Math.PI/2); }
-function navLeft(){ if(busy||isAnimating||swapAnim)return; busy=true;isAnimating=true;navDir=-1;
-  targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI/2); }
+const startQuat=new THREE.Quaternion();
+let rotT=0; const ROT_DUR=0.42;
+function navRight(){ if(busy||isAnimating||swapAnim)return; busy=true;isAnimating=true;navDir=1;rotT=0;
+  startQuat.copy(cubeGroup.quaternion); targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0),-Math.PI/2); }
+function navLeft(){ if(busy||isAnimating||swapAnim)return; busy=true;isAnimating=true;navDir=-1;rotT=0;
+  startQuat.copy(cubeGroup.quaternion); targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI/2); }
 function onRotationComplete(){ currentBoard=mod(currentBoard+navDir); cubeGroup.quaternion.identity(); targetQuat.identity(); navDir=0;
   assignFaces(); isAnimating=false; busy=false; updateUI(); setTimeout(checkFusions,120); }
 
@@ -410,45 +401,28 @@ const dotsEl=document.getElementById('navDots');
 for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>jumpTo(i)); dotsEl.appendChild(d); }
 function jumpTo(target){ if(busy||isAnimating)return; const diff=mod(target-currentBoard); if(diff===0)return;
   if(diff===NBOARDS-1)navLeft(); else navRight(); }
-function updateUI(){ document.getElementById('stat-board').textContent=(mod(currentBoard)+1)+' / '+NBOARDS;
-  document.getElementById('stat-moves').textContent=moves;
-  document.getElementById('stat-pieces').textContent=curBoard().filter(p=>p).length;
+function updateUI(){
   dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===mod(currentBoard))); }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1200); }
-function buildLegend(){ const items=[
-  {label:'White',dir:'tap ↻',color:'rgba(180,180,190,0.6)'},{label:'Silver',dir:'← →',color:'#22d3ee'},
-  {label:'Gold',dir:'↗↘↙↖',color:'#ffd700'},{label:'Emerald',dir:'↑ ↓',color:'#34d399'},
-  {label:'Cosmic',dir:'8 dir',color:'#c4b5fd'},{label:'Nova',dir:'push',color:'#ffa014'},{label:'Plasma',dir:'± chaîne',color:'#ff2060'} ];
-  document.getElementById('legend').innerHTML=items.map(i=>'<div class="legend-item"><div class="legend-dot" style="background:'+i.color+'"></div>'+i.label+' <span style="color:rgba(220,220,235,0.6);font-size:0.46rem">'+i.dir+'</span></div>').join(''); }
 
-document.getElementById('btnReset').addEventListener('click',()=>{ buildBoards(); currentBoard=0; moves=0;
-  cubeGroup.quaternion.identity(); targetQuat.identity(); isAnimating=false; busy=false; navDir=0; swapAnim=null; assignFaces(); updateUI(); });
 
-const BG_MODES=['stars','off']; const BG_LABELS=['étoiles ✦','off']; let bgMode=0; const starLayers=[];
-[{count:80,depth:[-8,-25],speed:2.5,size:0.16,opacity:0.5,spread:50},{count:160,depth:[-25,-55],speed:1.1,size:0.09,opacity:0.32,spread:65},{count:240,depth:[-55,-90],speed:0.4,size:0.05,opacity:0.16,spread:80}].forEach(cfg=>{
-  const geo=new THREE.BufferGeometry(); const pos=new Float32Array(cfg.count*3); const sp=new Float32Array(cfg.count);
-  for(let i=0;i<cfg.count;i++){ pos[i*3]=(Math.random()-0.5)*cfg.spread; pos[i*3+1]=(Math.random()-0.5)*cfg.spread*0.7; pos[i*3+2]=cfg.depth[0]+Math.random()*(cfg.depth[1]-cfg.depth[0]); sp[i]=cfg.speed*(0.5+Math.random()); }
-  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
-  const pts=new THREE.Points(geo,new THREE.PointsMaterial({color:0x7ec8e3,size:cfg.size,transparent:true,opacity:cfg.opacity,depthWrite:false})); scene.add(pts); starLayers.push({pts,geo,sp,cfg}); });
-function updateBgVis(){ starLayers.forEach(l=>l.pts.visible=(bgMode===0)); }
-function tickBg(dt){ if(bgMode!==0)return; starLayers.forEach(l=>{ const a=l.geo.attributes.position.array;
-  for(let i=0;i<l.cfg.count;i++){ a[i*3+2]+=l.sp[i]*dt; if(a[i*3+2]>l.cfg.depth[0]+5){ a[i*3+2]=l.cfg.depth[1]; a[i*3]=(Math.random()-0.5)*l.cfg.spread; a[i*3+1]=(Math.random()-0.5)*l.cfg.spread*0.7; } }
-  l.geo.attributes.position.needsUpdate=true; }); }
-document.getElementById('btnBg').addEventListener('click',()=>{ bgMode=(bgMode+1)%BG_MODES.length; updateBgVis(); document.getElementById('btnBg').textContent='fond: '+BG_LABELS[bgMode]; });
+
 
 const clock=new THREE.Clock(); let last=0;
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0);
 function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const dt=t-last; last=t;
-  if(isAnimating){ cubeGroup.quaternion.slerp(targetQuat,0.14);
-    if(1-Math.abs(cubeGroup.quaternion.dot(targetQuat))<0.0002){ cubeGroup.quaternion.copy(targetQuat); onRotationComplete(); } }
-  tickSwap(dt); tickBg(dt);
+  if(isAnimating){ rotT=Math.min(1,rotT+dt/ROT_DUR);
+    const e=rotT<0.5?4*rotT*rotT*rotT:1-Math.pow(-2*rotT+2,3)/2;
+    cubeGroup.quaternion.copy(startQuat).slerp(targetQuat,e);
+    if(rotT>=1){ cubeGroup.quaternion.copy(targetQuat); onRotationComplete(); } }
+  tickSwap(dt);
   boards.forEach(arr=>arr.forEach((p,si)=>{ if(!p||!p.mesh)return; const ud=p.mesh.userData;
     if(p.mesh.visible&&!isAnimating&&!swapAnim&&p.baseQuat){ const ph=t*1.2+si*1.7;
-      const bq=new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.sin(ph)*0.012,0,Math.cos(ph*0.7)*0.008)); p.mesh.quaternion.copy(p.baseQuat).multiply(bq); }
+      const amp=Math.min(1,(t-(p._settle||0)));
+      const bq=new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.sin(ph)*0.012*amp,0,Math.cos(ph*0.7)*0.008*amp)); p.mesh.quaternion.copy(p.baseQuat).multiply(bq); }
     const st=p.state||'white';
-    if(st==='cosmic'||st==='supernovae'||st==='plasma'){ const pp=0.25+0.2*Math.sin(t*2.2+si);
-      ud.glow.material.color.set(st==='cosmic'?0x8338ec:st==='supernovae'?0xff8c00:0xff2060); ud.glow.material.opacity=pp;
-      ud.edge.material.color.set(st==='cosmic'?0xc4b5fd:st==='supernovae'?0xffeb3b:0xff2060); ud.edge.material.opacity=0.35+Math.sin(t*2.5)*0.12;
+    if(st==='cosmic'||st==='supernovae'||st==='plasma'){
+      ud.edge.material.color.set(st==='cosmic'?0xc4b5fd:st==='supernovae'?0xffeb3b:0xff2060); ud.edge.material.opacity=0.35; ud.glow.material.opacity=0;
     } else if(st!=='white'){ const eCol=st==='silver'?0x22d3ee:st==='gold'?0xffd700:0x34d399; ud.edge.material.color.set(eCol); ud.edge.material.opacity=0.22; ud.glow.material.opacity=0;
     } else { ud.edge.material.opacity=0.15; ud.glow.material.opacity=0; }
     // Atténuation de la face arrière (clairement en retrait)
@@ -459,7 +433,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   }));
   renderer.render(scene,camera);
 }
-buildBoards(); assignFaces(); buildLegend(); updateUI(); updateBgVis(); animate();
+buildBoards(); assignFaces(); updateUI(); animate();
 </script>
 </body>
 </html>
