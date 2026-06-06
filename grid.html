@@ -1,4 +1,87 @@
 <!DOCTYPE html>
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+  ADAM — STACK / V4  ·  SPÉCIFICATION DU CONCEPT (à lire avant toute modification)
+═══════════════════════════════════════════════════════════════════════════════
+
+  Ce fichier est le prototype de référence du jeu ADAM dans sa direction actuelle.
+  Auteur : Gregory. Toute instance qui reprend ce projet doit comprendre les enjeux
+  ci-dessous SANS qu'on ait à les réexpliquer.
+
+  ── LE CONCEPT EN UNE PHRASE ──────────────────────────────────────────────────
+  Une PILE de plans (tableaux) superposés en profondeur. Chaque plan est un
+  micro-puzzle fermé. On résout le plan de tête ; à la complétion, le RÉSULTAT
+  produit DESCEND sur une case imposée du plan suivant, et on migre vers lui via
+  un effet de zoom-traversant. Le résultat de chaque plan alimente le suivant :
+  c'est une CHAÎNE, pas une suite de puzzles indépendants.
+
+  ── LA MÉCANIQUE DE JEU (portée fidèlement d'ADAM V4 — NE PAS CONFONDRE) ───────
+  • DÉPLACEMENT = GLISSEMENT TAPIS-ROULANT. Drag horizontal => toute la LIGNE
+    glisse (wrap-around : ce qui sort d'un côté revient de l'autre). Drag vertical
+    => toute la COLONNE glisse (wrap-around). Snap au cran le plus proche en fin
+    de geste.
+    ⚠️ IMPORTANT : l'ÉTAT (white/silver/gold...) N'INFLUENCE PAS le déplacement.
+       TOUS les dominos glissent de la même façon, quel que soit leur état.
+       (Ne PAS réintroduire la logique du stack-v2 où l'état dictait la direction.)
+  • TAP sur un domino = ROTATION (+90° moitié droite, -90° moitié gauche).
+    La rotation change quelle FACE est exposée sur chaque bord (haut/bas/gauche/droite).
+  • Chaque domino a DEUX faces (face1, face2) + un état par face (state1, state2).
+
+  ── LA FUSION ──────────────────────────────────────────────────────────────────
+  Deux dominos adjacents fusionnent si les faces qui SE TOUCHENT sont IDENTIQUES,
+  c.-à-d. MÊME ICÔNE **ET** MÊME ÉTAT. Les deux faces en contact s'annulent ; les
+  deux faces partenaires (restantes) forment le domino-résultat, dont l'état MONTE
+  d'un cran (white→silver→gold→emerald→cosmic→supernovae→plasma).
+  Conséquence clé : l'état sert UNIQUEMENT de palier de fusion, pas de mobilité.
+
+  ── L'ENVELOPPE SPATIALE (le "stack") ──────────────────────────────────────────
+  Le plan de tête est devant ; les plans suivants s'enfoncent en Z et s'assombrissent.
+  À la complétion du plan de tête, navRight() joue le zoom-traversant et le plan
+  suivant devient la nouvelle tête, avec le résultat déjà posé sur LANDING_IDX.
+
+  ── PARAMÈTRES DE NIVEAU (la richesse vient de la CONFIG, pas de nouvelles règles) ──
+  • TARGET_BY_BOARD : condition de victoire par plan = "il reste N dominos".
+    (Tête = 1. Un plan avec leurre = souvent 2, car le leurre reste en place.)
+    NOTE DE DESIGN : la condition de victoire est pensée comme un PARAMÈTRE de niveau,
+    pas une constante. À terme on veut plusieurs types d'objectifs possibles :
+    "il reste N dominos", "fabriquer telle pièce précise (icône+état)", etc.
+  • LANDING_IDX   : case imposée où le résultat descend sur le plan suivant.
+    Les plans générés laissent cette case LIBRE (on conçoit le plan AUTOUR d'elle).
+  • ÉTATS DE DÉPART : un niveau peut poser des dominos déjà en silver/gold/etc.
+    Rôle = créer des PALIERS DE FUSION. Un gold de départ NE fusionne PAS avec les
+    blancs (états différents) : le joueur doit d'abord CONSTRUIRE un gold compatible.
+  • RÉTROGRADATION À LA MIGRATION (DEMOTE_BY_BOARD) : en traversant vers un plan, le
+    résultat PERD des crans d'état (variable par plan). Concrétise l'idée "le gold peut
+    redevenir silver". Franchir a un COÛT : on ne cumule pas la puissance indéfiniment.
+    Ex actuel : un emerald produit au plan 2 descend au plan 3 rétrogradé en silver (-2).
+  • OBJECTIF "ATTEINDRE UN ÉTAT" (à faire) : le plan 3 ASPIRE à un objectif de type
+    "fabriquer un domino d'état gold" (repromouvoir le silver entrant), mais la cible
+    actuelle reste un simple COMPTE de pièces (TARGET_BY_BOARD). Introduire un type
+    d'objectif "atteindre tel état" est la prochaine brique logique si le test plaît.
+
+  ── LES SOURCES DE DIFFICULTÉ IDENTIFIÉES (axe de recherche actuel) ─────────────
+  1. LE LEURRE : ajouter un domino qui ne sert PAS la solution, idéalement tentant
+     (il POURRAIT fusionner mais te piège). Fait passer le puzzle de "comment
+     fusionner" à "QUOI fusionner" — de l'exécution au discernement.
+  2. LES PALIERS D'ÉTAT : états de départ qui forcent des fusions préparatoires.
+  3. LA CHAÎNE ENTRE PLANS : le résultat qui descend doit être un atout OU un
+     fardeau, jamais neutre.
+
+  ── CE QU'ON NE FAIT PAS (ENCORE), ET POURQUOI ─────────────────────────────────
+  • PAS de générateur de niveaux automatique pour l'instant : prématuré tant que
+    le PLAISIR de jeu n'est pas prouvé. On conçoit les niveaux À LA MAIN.
+  • La génération aléatoire actuelle (genLevel) NE garantit PAS la solubilité :
+    c'est juste du décor de profondeur pour le prototype. Un vrai plan jouable
+    doit être conçu à la main (voir HAND_LEVELS plus bas) ou, plus tard, généré
+    "à l'envers" (partir de la solution et défaire des fusions = solubilité garantie,
+    et le nombre de défaire = curseur de difficulté).
+
+  ── RÈGLES DE TRAVAIL DE GREGORY ───────────────────────────────────────────────
+  • Analyser les captures en détail avant de coder ; attendre confirmation.
+  • Modifier UNIQUEMENT ce qui est demandé (ne pas toucher logo/menu/disposition).
+  • Versionner v1/v2/v3… ; si un fichier uploadé manque, STOP et redemander.
+═══════════════════════════════════════════════════════════════════════════════
+-->
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
@@ -121,8 +204,21 @@ const HEAD_LEVEL=[
 ];
 
 // ─── Paramètres de complétion (Temps 2) ───
-let TARGET_COUNT=1;        // cible : nb de dominos restants pour valider le plan (1 = facile)
+// Cible = nombre de dominos restants pour valider un plan. PARAMÉTRABLE PAR PLAN
+// (voir note de design dans l'en-tête : la condition de victoire est un paramètre,
+//  pas une constante). Plan 0 (tête) = 1. Plan 1 (palier+leurre) = 2 (le leurre reste).
+const TARGET_BY_BOARD=[1, 2, 1, 1];
+function targetFor(boardIdx){ return TARGET_BY_BOARD[boardIdx] != null ? TARGET_BY_BOARD[boardIdx] : 1; }
 const LANDING_IDX=10;      // case imposée où le résultat descend sur le plan suivant (col2,row2)
+
+// ─── RÉTROGRADATION À LA MIGRATION (variable, paramétrable par plan) ───
+// En traversant vers le plan d'index N, le résultat perd DEMOTE_BY_BOARD[N] crans d'état.
+// Donne du sens à la descente : franchir a un COÛT, on ne cumule pas la puissance.
+// Ex : un emerald qui descend vers le plan 2 (perte de 2) arrive en silver.
+// 0 = pas de perte ; 1 = un cran ; 2 = deux crans ; etc.
+const DEMOTE_BY_BOARD=[0, 0, 2, 1];
+function demoteFor(boardIdx){ return DEMOTE_BY_BOARD[boardIdx] != null ? DEMOTE_BY_BOARD[boardIdx] : 0; }
+function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
 // Génère un plan "copie-variante" pour la profondeur (mêmes icônes, placement varié).
 // La case d'accueil (LANDING_IDX) est laissée libre : le résultat du plan du dessus s'y posera.
@@ -138,7 +234,39 @@ function genLevel(){
   return out;
 }
 
-const DEMOS=[ HEAD_LEVEL, genLevel(), genLevel(), genLevel() ];
+// ─── NIVEAUX CONÇUS À LA MAIN (HAND_LEVELS) ────────────────────────────────────
+// Format : [idx, state, face1, face2, rotation].
+// PLAN 2 — test "palier de gold + leurre" :
+//   • Deux paires de blancs (circle/circle et line/line via faces) à monter vers gold.
+//   • Un GOLD DE DÉPART (idx 6) : il ne fusionnera qu'avec un gold construit par le
+//     joueur — illustre le PALIER D'ÉTAT (les blancs ne peuvent pas l'intégrer direct).
+//   • Un LEURRE (idx 19) : tentant car partage une icône, mais le fusionner gâche un
+//     état utile ailleurs. Illustre "QUOI fusionner" plutôt que "comment".
+//   • LANDING_IDX (10) laissé libre pour le résultat qui descend de la tête.
+const PLAN2_HAND=[
+  [5, 'white','circle','line',0],
+  [9, 'white','circle','chevron',0],   // partage 'circle' avec idx5
+  [13,'white','line','wave',0],        // partage 'line' avec idx5
+  [6, 'gold','wave','circle',0],       // GOLD de départ : palier à atteindre
+  [19,'white','chevron','wave',0],     // LEURRE
+];
+
+// PLAN 3 — idée : "REMONTER CE QU'ON A PERDU".
+//   Le résultat du plan 2 (un emerald) descend ici RÉTROGRADÉ en silver (DEMOTE_BY_BOARD[2]=2).
+//   Petite histoire sans tutoriel : "j'avais un emerald, la traversée l'a cassé en silver,
+//   je dois le réparer". Objectif : refusionner le silver entrant pour le repromouvoir en gold.
+//   • idx 9  : SILVER partenaire (icône 'wave' commune avec le résultat probable) → permet la repromotion.
+//   • idx 14 : SILVER LEURRE (icône 'chevron', différente) → force le DISCERNEMENT : avec lequel fusionner ?
+//   • Deux blancs (idx 5, 18) : bruit de fond / matière pour réorganiser par glissement.
+//   • LANDING_IDX (10) laissé libre pour le silver qui descend.
+const PLAN3_HAND=[
+  [9, 'silver','wave','line',0],       // partenaire silver (repromotion vers gold)
+  [14,'silver','chevron','circle',0],  // LEURRE silver (icône différente)
+  [5, 'white','circle','line',0],
+  [18,'white','line','wave',0],
+];
+
+const DEMOS=[ HEAD_LEVEL, PLAN2_HAND, PLAN3_HAND, genLevel() ];
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -242,7 +370,8 @@ function beginNav(dir){
   flyFace = (dir===1) ? currentBoard : nextCur;
 }
 function onRotationComplete(){ currentBoard=mod(currentBoard+navDir); navDir=0;
-  flyFace=-1; navFrom=[]; navTo=[]; assignFaces(); isAnimating=false; busy=false; updateUI(); }
+  flyFace=-1; navFrom=[]; navTo=[]; assignFaces(); isAnimating=false; busy=false; updateUI();
+  setTimeout(checkFusions,100); }
 
 function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===mod(currentBoard))); }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1200); }
@@ -425,8 +554,14 @@ for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='
 function cardinalNeighbors(i){ const r=[]; const x=colOf(i),y=rowOf(i);
   if(y>0)r.push(i-COLS); if(y<ROWS-1)r.push(i+COLS); if(x>0)r.push(i-1); if(x<COLS-1)r.push(i+1); return r; }
 
+let _fuseScheduled=false;
 function checkFusions(){
-  if(busy||isAnimating||swapAnim)return;
+  // Si on est occupé (anim/nav/swap en cours), NE PAS abandonner : se redemander plus tard.
+  // Sinon une paire fusionnable amenée pendant une animation ne serait jamais détectée.
+  if(busy||isAnimating||swapAnim||migrating){
+    if(!_fuseScheduled){ _fuseScheduled=true; setTimeout(()=>{ _fuseScheduled=false; checkFusions(); },120); }
+    return;
+  }
   const d=curBoard();
   // SIMPLE FUSION (horizontale puis verticale)
   for(let i=0;i<TOTAL;i++){ if(!d[i])continue; const x=colOf(i),y=rowOf(i);
@@ -478,7 +613,7 @@ function countPieces(arr){ let n=0; for(const p of arr) if(p) n++; return n; }
 function checkCompletion(){
   if(busy||isAnimating||swapAnim||migrating)return;
   const head=curBoard();
-  if(countPieces(head)!==TARGET_COUNT)return;
+  if(countPieces(head)!==targetFor(currentBoard))return;
   // récupérer la pièce-résultat à faire migrer (la première restante)
   let result=null;
   for(let i=0;i<TOTAL;i++){ if(head[i]){ result=head[i]; break; } }
@@ -489,11 +624,13 @@ function checkCompletion(){
 function migrateDown(result){
   migrating=true; busy=true;
   const nextBoard=mod(currentBoard+1);
-  // poser une copie du résultat sur la case d'accueil imposée du plan suivant (si libre)
+  // l'état du résultat est RÉTROGRADÉ en traversant (coût de la migration, variable par plan)
+  const landedState=demoteState(result.state, demoteFor(nextBoard));
+  // poser une copie du résultat (rétrogradé) sur la case d'accueil imposée du plan suivant (si libre)
   if(!boards[nextBoard][LANDING_IDX]){
-    const mesh=createDominoMesh(result.face1,result.face2,result.state); mesh.visible=false; cubeGroup.add(mesh);
+    const mesh=createDominoMesh(result.face1,result.face2,landedState); mesh.visible=false; cubeGroup.add(mesh);
     boards[nextBoard][LANDING_IDX]={
-      state:result.state, state1:result.state, state2:result.state,
+      state:landedState, state1:landedState, state2:landedState,
       face1:result.face1, face2:result.face2, rotation:0, mesh, face:nextBoard
     };
   }
@@ -501,7 +638,8 @@ function migrateDown(result){
   const head=boards[currentBoard];
   const hi=head.indexOf(result); if(hi>=0){ if(result.mesh)cubeGroup.remove(result.mesh); head[hi]=null; }
   assignFaces();
-  showToast('Niveau résolu → on avance');
+  const demoted = landedState!==result.state;
+  showToast(demoted ? ('Traversée : '+result.state+' → '+landedState) : 'Niveau résolu → on avance');
   // déclenche le zoom-traversant vers le plan suivant
   setTimeout(()=>{ migrating=false; busy=false; navRight(); },140);
 }
