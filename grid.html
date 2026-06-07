@@ -666,10 +666,10 @@ function fitCamera(){
   const w=window.innerWidth, h=window.innerHeight, aspect=w/h;
   renderer.setSize(w,h); camera.aspect=aspect;
   const vFOV=camera.fov*Math.PI/180;
-  const margin=1.25;                                  // marge autour de la grille
-  const needH=(FACE_H*margin)/(2*Math.tan(vFOV/2));   // distance pour que la hauteur tienne
-  const needW=(FACE_W*margin)/(2*Math.tan(vFOV/2)*aspect); // distance pour que la largeur tienne
-  camera.position.z=Math.max(needH,needW,CAM_Z);
+  const marginW=1.08;                                       // marge latérale serrée → remplit les côtés
+  const needW=(FACE_W*marginW)/(2*Math.tan(vFOV/2)*aspect); // distance pour que la largeur remplisse l'écran
+  const needH=(FACE_H*1.02)/(2*Math.tan(vFOV/2));           // garde-fou : ne pas couper en hauteur
+  camera.position.z=Math.max(needW,needH);
   camera.position.set(0,0,camera.position.z); camera.lookAt(0,0,0);
   camera.updateProjectionMatrix();
 }
