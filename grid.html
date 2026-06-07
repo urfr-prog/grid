@@ -667,8 +667,14 @@ function performFusion(i1,i2,dir){
   flashFusion(p1);
   // retirer p2
   if(p2.mesh)cubeGroup.remove(p2.mesh); d[i2]=null;
-  // p1 devient le résultat : faces partenaires, état monté
-  p1.face1=nf1; p1.face2=nf2; p1.rotation=0;
+  // p1 devient le résultat : faces partenaires, état monté.
+  // Vertical → faces haut/bas (rotation 0). Horizontal → faces gauche/droite (rotation 90).
+  if(dir==='h'){
+    // à rot90 : face1 s'affiche à droite, face2 à gauche → garder nf1 (gauche) et nf2 (droite)
+    p1.face1=nf2; p1.face2=nf1; p1.rotation=90;
+  } else {
+    p1.face1=nf1; p1.face2=nf2; p1.rotation=0;
+  }
   p1.state=upState; p1.state1=upState; p1.state2=upState;
   refreshTex(p1);
   placePiece(p1,0);          // fixe immédiatement position + orientation (pas d'inversion résiduelle)
