@@ -774,6 +774,8 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     // Atténuation par profondeur réelle : plus c'est loin, plus c'est sombre
     const depth = Math.max(0, -p.mesh.position.z) / (STACK_GAP*(NBOARDS-1));   // 0 devant → 1 fond
     let dim = Math.max(0.18, 1 - depth*1.15);
+    // les plans non-actifs (derrière la tête) deviennent quasi fantômes
+    if(!isAnimating && mod(f-currentBoard)!==0) dim = Math.min(dim, 0.25);
     if(isFly) dim = Math.max(0, 1 - flyT*1.25);     // fondu propre du plan acteur
     ud.faceMesh.material.opacity = dim;
     ud.edge.material.opacity *= dim;
