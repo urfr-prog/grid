@@ -95,10 +95,10 @@
     font-family:'SF Mono','Fira Code',monospace; color:rgba(220,220,235,0.9);
     overflow:hidden; user-select:none;
   }
-  #c { width:600px; height:600px; touch-action:none; cursor:default; }
+  #c { position:fixed; top:0; left:0; width:100vw; height:100vh; display:block; touch-action:none; cursor:default; }
   .info-bar { display:flex; gap:16px; margin-top:10px; font-size:0.65rem; color:rgba(180,180,200,0.5); letter-spacing:0.1em; }
   .info-bar span { color:rgba(220,220,235,0.8); }
-  .nav-dots { display:flex; gap:7px; margin-top:8px; }
+  .nav-dots { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 22px); left:50%; transform:translateX(-50%); display:flex; gap:7px; z-index:200; }
   .nav-dot { width:8px; height:8px; border-radius:50%; background:rgba(34,211,238,0.15); transition:all 0.35s; cursor:pointer; }
   .nav-dot.active { background:rgba(34,211,238,0.7); box-shadow:0 0 9px rgba(34,211,238,0.5); }
   .hint { margin-top:6px; font-size:0.5rem; color:rgba(180,180,200,0.3); letter-spacing:0.12em; }
@@ -118,7 +118,7 @@
 </style>
 </head>
 <body>
-  <canvas id="c" width="1200" height="1200"></canvas>
+  <canvas id="c"></canvas>
   <div class="nav-dots" id="navDots"></div>
   <div class="toast" id="toast"></div>
 
@@ -270,9 +270,9 @@ const DEMOS=[ HEAD_LEVEL, PLAN2_HAND, PLAN3_HAND, genLevel() ];
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-renderer.setSize(600,600); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x0a0e14);
+renderer.setSize(window.innerWidth,window.innerHeight); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x0a0e14);
 const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera(42,1,0.1,200); scene.add(new THREE.AmbientLight(0xffffff,0.95));
+const camera=new THREE.PerspectiveCamera(42,window.innerWidth/window.innerHeight,0.1,200); scene.add(new THREE.AmbientLight(0xffffff,0.95));
 
 const FACE_W=COLS*CELL_W, FACE_H=ROWS*CELL_W, HALF=FACE_W/2, CAM_Z=11;
 const STACK_GAP=2.4;           // écart en Z entre deux plans
@@ -661,7 +661,20 @@ function flashFusion(p){ if(!p.mesh)return; const g=p.mesh.userData.glow;
   g.material.color.set(0xffffff); g.material.opacity=0.85; p.mesh.scale.set(1.15,1.15,1.15);
   setTimeout(()=>{ p.mesh.scale.set(1,1,1); g.material.opacity=0; },300); }
 const clock=new THREE.Clock(); let last=0;
-camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0);
+// Cadre la pile pour qu'elle tienne à l'écran quel que soit le format (portrait mobile inclus).
+function fitCamera(){
+  const w=window.innerWidth, h=window.innerHeight, aspect=w/h;
+  renderer.setSize(w,h); camera.aspect=aspect;
+  const vFOV=camera.fov*Math.PI/180;
+  const margin=1.25;                                  // marge autour de la grille
+  const needH=(FACE_H*margin)/(2*Math.tan(vFOV/2));   // distance pour que la hauteur tienne
+  const needW=(FACE_W*margin)/(2*Math.tan(vFOV/2)*aspect); // distance pour que la largeur tienne
+  camera.position.z=Math.max(needH,needW,CAM_Z);
+  camera.position.set(0,0,camera.position.z); camera.lookAt(0,0,0);
+  camera.updateProjectionMatrix();
+}
+camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); fitCamera();
+window.addEventListener('resize',fitCamera);
 function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const dt=t-last; last=t;
   let e=0;
   if(isAnimating){ rotT=Math.min(1,rotT+dt/ROT_DUR);
