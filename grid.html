@@ -77,6 +77,10 @@
     et le nombre de défaire = curseur de difficulté).
 
   ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v6 : ABANDON DU STACK VISUEL. Un seul plan visible à la fois (plus de plans fantômes
+       empilés en profondeur). À la migration, le plan suivant ARRIVE DE LOIN (part au
+       fond, ARRIVE_Z, et fonce jusqu'en position de tête) pendant que le plan résolu
+       se fond en filant vers la caméra. slotZ/STACK_GAP/atténuation-profondeur retirés.
   v5 : UNDO illimité (snapshot d'état complet, bouton ↶ bas-droite + Ctrl/Cmd+Z) ;
        PLAN 4 conçu main "l'aimant comme clé" (résolution par ouverture de couloir,
        vitrine de l'attraction) ; leurre du plan 2 rendu réellement tentant (circle
@@ -93,7 +97,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v5 · undo illimité + plan 4 (aimant) + leurre + feedback état</title>
+<title>ADAM Stack — v6 · plan unique, le suivant arrive de loin</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -311,7 +315,6 @@ const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(42,window.innerWidth/window.innerHeight,0.1,200); scene.add(new THREE.AmbientLight(0xffffff,0.95));
 
 const FACE_W=COLS*CELL_W, FACE_H=ROWS*CELL_W, HALF=FACE_W/2, CAM_Z=11;
-const STACK_GAP=2.4;           // écart en Z entre deux plans
 const stackGroup=new THREE.Group(); scene.add(stackGroup);
 const cubeGroup=stackGroup;    // alias : la logique de jeu continue d'ajouter ses meshes ici
 const FACE_ROT=[0,Math.PI/2,Math.PI,-Math.PI/2]; // conservé pour compat (non utilisé en pile)
@@ -407,16 +410,15 @@ function placePiece(p,depthZ){ if(!p||!p.mesh)return;
 }
 function mod(n){ return ((n%NBOARDS)+NBOARDS)%NBOARDS; }
 
-// depthSlot 0=devant ... NBOARDS-1=fond. z décroît avec la profondeur.
-function slotZ(slot){ return -slot*STACK_GAP; }
+// (v6 : plus de pile en profondeur — slotZ/STACK_GAP supprimés, un seul plan visible)
 
+// v6 : UN SEUL plan visible à la fois. Le plan courant est posé à Z=0 ; tous les autres
+// sont cachés. Les transitions (plan entrant qui arrive de loin) sont gérées dans animate.
 function assignFaces(){
-  const slotOf=f=>mod(f-currentBoard);
-  gridMeshes.forEach(g=>{ const f=g.userData.face; const slot=slotOf(f);
-    g.position.set(0,0,slotZ(slot)-0.01); g.quaternion.identity(); g.visible=true;
-    g.userData.slot=slot; });
-  boards.forEach((arr,f)=>{ const slot=slotOf(f);
-    arr.forEach(p=>{ if(!p)return; placePiece(p,slotZ(slot)); p.faceSlot=slot; p.mesh.visible=true; }); });
+  gridMeshes.forEach(g=>{ const f=g.userData.face; const isCur=(f===currentBoard);
+    g.position.set(0,0,-0.01); g.quaternion.identity(); g.visible=isCur; });
+  boards.forEach((arr,f)=>{ const isCur=(f===currentBoard);
+    arr.forEach(p=>{ if(!p)return; placePiece(p,0); p.mesh.visible=isCur; }); });
 }
 // ════════════════════════════════════════════════════════════
 //  MOTEUR DE JEU — portage fidèle de la mécanique ADAM V4 :
@@ -427,26 +429,30 @@ function assignFaces(){
 
 let busy=false, isAnimating=false, navDir=0;
 let rotT=0; const ROT_DUR=0.55;
-let flyFace=-1;
 const FLY_PUNCH=CAM_Z+3;
-let navFrom=[], navTo=[];
+const ARRIVE_Z=-(CAM_Z+14);   // v6 : Z de départ du plan entrant (loin au fond → fonce vers 0)
 let swapAnim=null;            // réutilisé pour animer le snap du glissement
 let rotAnim=null;             // animation de pivot du domino au tap (slerp doux, feel du layer)
 
 function curBoard(){ return boards[currentBoard]; }
 
-// ─── Navigation entre plans (zoom-traversant) — inchangé ───
+// ─── Navigation entre plans (v6 : le plan suivant ARRIVE DE LOIN) ───
+//  Plus de pile : un seul plan visible. À la transition, deux acteurs seulement :
+//   • outFace (plan qu'on quitte)  : se fond sur place (et file vers la caméra, flyT).
+//   • inFace  (plan qui arrive)    : part de loin au fond (ARRIVE_Z), fonce jusqu'à Z=0,
+//     opacité 0→1. Donne une vraie entrée en scène plutôt qu'un dévoilement de pile.
+let outFace=-1, inFace=-1;
 function navRight(){ if(busy||isAnimating||swapAnim)return; busy=true;isAnimating=true;navDir=1;rotT=0; beginNav(1); }
 function navLeft(){ if(busy||isAnimating||swapAnim)return; busy=true;isAnimating=true;navDir=-1;rotT=0; beginNav(-1); }
 function beginNav(dir){
-  const slotOf=(f,cur)=>mod(f-cur);
   const nextCur=mod(currentBoard+dir);
-  navFrom=[]; navTo=[];
-  for(let f=0;f<NBOARDS;f++){ navFrom[f]=slotOf(f,currentBoard); navTo[f]=slotOf(f,nextCur); }
-  flyFace = (dir===1) ? currentBoard : nextCur;
+  outFace=currentBoard; inFace=nextCur;
+  // rendre l'entrant visible pour pouvoir l'animer (il sera positionné par animate)
+  if(boards[inFace]) boards[inFace].forEach(p=>{ if(p&&p.mesh) p.mesh.visible=true; });
+  const g=gridMeshes.find(gm=>gm.userData.face===inFace); if(g) g.visible=true;
 }
 function onRotationComplete(){ currentBoard=mod(currentBoard+navDir); navDir=0;
-  flyFace=-1; navFrom=[]; navTo=[]; assignFaces(); isAnimating=false; busy=false; updateUI();
+  outFace=-1; inFace=-1; assignFaces(); isAnimating=false; busy=false; updateUI();
   setTimeout(checkFusions,100); }
 
 function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===mod(currentBoard))); }
@@ -850,25 +856,29 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     // easeInOut : glissement doux des plans d'un slot à l'autre
     e = rotT<0.5 ? 2*rotT*rotT : 1-Math.pow(-2*rotT+2,2)/2;
     if(rotT>=1){ onRotationComplete(); } }
-  // ── Effet zoom-traversant sur le plan acteur ──
-  // navDir=1 (avancer) : la tête fonce vers la caméra (accélère) et se fond → disparaît.
-  // navDir=-1 (reculer) : ce même plan revient par l'avant (lecture inverse) et se rematérialise.
-  let flyT=0;                                   // 0 = à sa place de tête, 1 = plein zoom devant caméra
-  if(isAnimating && flyFace>=0){
-    flyT = navDir===1 ? e : 1-e;
-  }
+  // ── v6 : le plan sortant s'efface en filant vers la caméra (flyT 0→1) ;
+  //    le plan entrant arrive de loin (géré plus bas via e). Même style quel que soit le sens. ──
+  let flyT = isAnimating ? e : 0;
   tickSwap(dt);
   tickRot(dt);
   boards.forEach((arr,f)=>arr.forEach((p,si)=>{ if(!p||!p.mesh)return; const ud=p.mesh.userData;
-    // Z du plan : interpolé entre slot de départ et slot d'arrivée pendant la nav
-    let planZ;
-    if(isAnimating){ planZ = slotZ(navFrom[f]) + (slotZ(navTo[f])-slotZ(navFrom[f]))*e; }
-    else { planZ = slotZ(mod(f-currentBoard)); }
-    const isFly = isAnimating && f===flyFace;
-    // le plan acteur s'écarte de sa trajectoire vers la caméra (easeIn quadratique)
-    const flyExtra = isFly ? FLY_PUNCH*(flyT*flyT) : 0;
+    // v6 : un seul plan visible hors anim ; pendant la nav, deux acteurs (sortant + entrant).
+    const isOut = isAnimating && f===outFace;
+    const isIn  = isAnimating && f===inFace;
+    if(!isAnimating && f!==currentBoard) return;   // plans non concernés : laissés cachés
+    // position Z du plan
+    let planZ=0, dim=1;
+    if(isOut){
+      planZ = FLY_PUNCH*(flyT*flyT);               // file vers la caméra (easeIn)
+      dim = Math.max(0, 1 - flyT*1.25);            // et se fond
+    } else if(isIn){
+      planZ = ARRIVE_Z*(1-e);                      // de loin (ARRIVE_Z) vers 0 (easeInOut via e)
+      dim = Math.min(1, e*1.4);                    // se matérialise en arrivant
+    } else {
+      planZ = 0; dim = 1;                          // plan courant posé
+    }
     // pendant un swap (échange de pièces), tickSwap pilote la position : ne pas l'écraser
-    if(!swapAnim){ p.mesh.position.z = planZ + SAT_LIFT + flyExtra; }
+    if(!swapAnim){ p.mesh.position.z = planZ + SAT_LIFT; }
     if(p.mesh.visible&&!isAnimating&&!swapAnim&&!(rotAnim&&rotAnim.mesh===p.mesh)&&p.baseQuat){ const ph=t*1.2+si*1.7;
       const amp=Math.min(1,(t-(p._settle||0)));
       // balancement décoratif uniquement dans le plan (axe Z) : ne change jamais quelle face est en haut/bas.
@@ -885,27 +895,19 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
         ud.edge.material.color.set(0xff3050); ud.edge.material.opacity=Math.max(ud.edge.material.opacity,0.5*k);
       } else { p._mismatchT=0; ud.glow.material.color.set(0x22d3ee); }
     }
-    // Atténuation par profondeur réelle : plus c'est loin, plus c'est sombre
-    const depth = Math.max(0, -p.mesh.position.z) / (STACK_GAP*(NBOARDS-1));   // 0 devant → 1 fond
-    let dim = Math.max(0.18, 1 - depth*1.15);
-    // les plans non-actifs (derrière la tête) deviennent quasi fantômes
-    if(!isAnimating && mod(f-currentBoard)!==0) dim = Math.min(dim, 0.25);
-    if(isFly) dim = Math.max(0, 1 - flyT*1.25);     // fondu propre du plan acteur
     ud.faceMesh.material.opacity = dim;
     ud.edge.material.opacity *= dim;
     ud.glow.material.opacity *= dim;
   }));
-  // grilles : même interpolation de slot + même fondu pour la grille du plan acteur
+  // grilles : grille du plan courant à Z=0 ; pendant la nav, sortante file / entrante arrive de loin
   gridMeshes.forEach(g=>{ const f=g.userData.face;
-    let planZ;
-    if(isAnimating){ planZ = slotZ(navFrom[f]) + (slotZ(navTo[f])-slotZ(navFrom[f]))*e; }
-    else { planZ = slotZ(mod(f-currentBoard)); }
-    const isFly = isAnimating && f===flyFace;
-    const flyExtra = isFly ? FLY_PUNCH*(flyT*flyT) : 0;
-    g.position.z = planZ - 0.01 + flyExtra;
-    const depth=Math.max(0,-g.position.z)/(STACK_GAP*(NBOARDS-1));
-    let gop=Math.max(0.05,0.5-depth*0.5);
-    if(isFly) gop=Math.min(gop,0.5)*Math.max(0,1-flyT*1.25);
+    const isOut = isAnimating && f===outFace;
+    const isIn  = isAnimating && f===inFace;
+    if(!isAnimating && f!==currentBoard){ g.visible=false; return; }
+    let planZ=0, gop=0.5;
+    if(isOut){ planZ=FLY_PUNCH*(flyT*flyT); gop=0.5*Math.max(0,1-flyT*1.25); }
+    else if(isIn){ planZ=ARRIVE_Z*(1-e); gop=0.5*Math.min(1,e*1.4); }
+    g.position.z = planZ - 0.01;
     g.material.opacity=gop; });
   renderer.render(scene,camera);
 }
