@@ -592,6 +592,62 @@ function checkFusions(){
       if(fT&&fB&&fT===fB&&sT===sB){ performFusion(i,iB,'v'); return; }
     }
   }
+  // Aucune fusion adjacente → tenter l'attraction magnétique (rapproche une paire séparée si couloir vide)
+  tryMagnet();
+}
+
+// ════════════════════════════════════════════
+//  ATTRACTION MAGNÉTIQUE — deux dominos fusionnables sur même ligne/colonne,
+//  rien entre eux → ils glissent l'un vers l'autre jusqu'à devenir adjacents.
+// ════════════════════════════════════════════
+function corridorEmpty(d,i1,i2,horizontal){
+  if(horizontal){ const y=rowOf(i1); for(let c=colOf(i1)+1;c<colOf(i2);c++){ if(d[y*COLS+c])return false; } }
+  else { const x=colOf(i1); for(let r=rowOf(i1)+1;r<rowOf(i2);r++){ if(d[r*COLS+x])return false; } }
+  return true;
+}
+function tryMagnet(){
+  if(busy||isAnimating||swapAnim||migrating)return;
+  const d=curBoard();
+  // lignes : pour chaque paire gauche→droite séparée d'au moins une case
+  for(let y=0;y<ROWS;y++){
+    for(let cL=0;cL<COLS-1;cL++){ const iL=y*COLS+cL; if(!d[iL])continue;
+      for(let cR=cL+1;cR<COLS;cR++){ const iR=y*COLS+cR; if(!d[iR])continue;
+        if(cR-cL<2)break;  // déjà adjacents → checkFusions s'en occupe
+        const fL=getExposedFace(d[iL],'right'), fR=getExposedFace(d[iR],'left');
+        const sL=getExposedState(d[iL],'right'), sR=getExposedState(d[iR],'left');
+        if(fL&&fR&&fL===fR&&sL===sR&&corridorEmpty(d,iL,iR,true)){
+          magnetMove(iL,iR,true); return;
+        }
+        break;  // le plus proche à droite sur cette ligne suffit
+      }
+    }
+  }
+  // colonnes : paires haut→bas
+  for(let x=0;x<COLS;x++){
+    for(let rT=0;rT<ROWS-1;rT++){ const iT=rT*COLS+x; if(!d[iT])continue;
+      for(let rB=rT+1;rB<ROWS;rB++){ const iB=rB*COLS+x; if(!d[iB])continue;
+        if(rB-rT<2)break;
+        const fT=getExposedFace(d[iT],'bottom'), fB=getExposedFace(d[iB],'top');
+        const sT=getExposedState(d[iT],'bottom'), sB=getExposedState(d[iB],'top');
+        if(fT&&fB&&fT===fB&&sT===sB&&corridorEmpty(d,iT,iB,false)){
+          magnetMove(iT,iB,false); return;
+        }
+        break;
+      }
+    }
+  }
+}
+// rapproche les deux dominos : on glisse celui de droite/bas vers celui de gauche/haut (couloir vide garanti)
+function magnetMove(i1,i2,horizontal){
+  const d=curBoard(); const mover=d[i2];
+  const dest = horizontal ? i1+1 : i1+COLS;
+  if(dest===i2){ setTimeout(checkFusions,40); return; }
+  d[dest]=mover; d[i2]=null;
+  const from=mover.mesh.position.clone();
+  placePiece(mover,0); const to=mover.mesh.position.clone();
+  mover.mesh.position.copy(from);
+  busy=true;
+  swapAnim={pairs:[{mesh:mover.mesh,from,to}],t:0,after:()=>{ busy=false; setTimeout(checkFusions,60); }};
 }
 
 function nextStateName(st){ const i=STATE_ORDER.indexOf(st||'white'); return i<STATE_ORDER.length-1?STATE_ORDER[i+1]:STATE_ORDER[i]; }
