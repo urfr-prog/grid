@@ -199,8 +199,8 @@ function getDominoTex(face1,face2,state){ const key=face1+'>'+face2+'|'+state; i
 const HEAD_LEVEL=[
   [17,'white','chevron','circle',0],
   [12,'white','circle','line',0],
-  [14,'white','chevron','wave',0],
-  [9, 'white','wave','line',0],
+  [14,'white','chevron','wave',-90],
+  [9, 'white','wave','line',90],
 ];
 
 // ─── Paramètres de complétion (Temps 2) ───
@@ -356,6 +356,7 @@ let flyFace=-1;
 const FLY_PUNCH=CAM_Z+3;
 let navFrom=[], navTo=[];
 let swapAnim=null;            // réutilisé pour animer le snap du glissement
+let rotAnim=null;             // animation de pivot du domino au tap (slerp doux, feel du layer)
 
 function curBoard(){ return boards[currentBoard]; }
 
@@ -398,10 +399,15 @@ function refreshTex(p){ if(!p||!p.mesh)return; const st=p.state1||p.state||'whit
   p.mesh.userData.faceMesh.material.needsUpdate=true; }
 
 // ─── TAP = ROTATION (porté du V4 : moitié droite +90, gauche -90) ───
-function rotatePiece(i,clockwise){ const p=curBoard()[i]; if(!p)return;
+function rotatePiece(i,clockwise){ const p=curBoard()[i]; if(!p||!p.mesh)return;
+  if(busy||isAnimating||swapAnim||rotAnim)return;
   p.rotation=(p.rotation||0)+(clockwise?90:-90);
-  placePiece(p,0);
-  setTimeout(()=>checkFusions(),180);
+  // quaternion cible (même convention que placePiece : signe inversé vs CSS)
+  const qFrom=p.mesh.quaternion.clone();
+  const qTo=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-(p.rotation||0)*Math.PI/180);
+  p.baseQuat=qTo.clone();
+  busy=true;
+  rotAnim={mesh:p.mesh,from:qFrom,to:qTo,t:0,after:()=>{ p._settle=clock.getElapsedTime(); busy=false; setTimeout(()=>checkFusions(),60); }};
 }
 
 // ════════════════════════════════════════════
@@ -490,6 +496,14 @@ function tickSwap(dt){ if(!swapAnim)return; swapAnim.t+=dt*5.0;
   const pr=Math.min(1,swapAnim.t); const e=pr<0.5?2*pr*pr:(1-Math.pow(-2*pr+2,2)/2);
   swapAnim.pairs.forEach(pp=>pp.mesh.position.lerpVectors(pp.from,pp.to,e));
   if(pr>=1){ const cb=swapAnim.after; swapAnim=null; assignFaces(); if(cb)cb(); } }
+
+// pivot doux du domino au tap : slerp avec easeInOutQuad, ~0.55s (feel du layer 6X4)
+function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*2.86;
+  const pr=Math.min(1,rotAnim.t); const e=pr<0.5?2*pr*pr:(1-Math.pow(-2*pr+2,2)/2);
+  rotAnim.mesh.quaternion.slerpQuaternions(rotAnim.from,rotAnim.to,e);
+  // léger dézoom en cloche : 1 → 0.80 → 1 (creux au milieu du pivot)
+  const s=1-0.20*Math.sin(pr*Math.PI); rotAnim.mesh.scale.set(s,s,s);
+  if(pr>=1){ rotAnim.mesh.scale.set(1,1,1); const cb=rotAnim.after; rotAnim=null; if(cb)cb(); } }
 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
@@ -662,6 +676,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     flyT = navDir===1 ? e : 1-e;
   }
   tickSwap(dt);
+  tickRot(dt);
   boards.forEach((arr,f)=>arr.forEach((p,si)=>{ if(!p||!p.mesh)return; const ud=p.mesh.userData;
     // Z du plan : interpolé entre slot de départ et slot d'arrivée pendant la nav
     let planZ;
@@ -672,7 +687,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     const flyExtra = isFly ? FLY_PUNCH*(flyT*flyT) : 0;
     // pendant un swap (échange de pièces), tickSwap pilote la position : ne pas l'écraser
     if(!swapAnim){ p.mesh.position.z = planZ + SAT_LIFT + flyExtra; }
-    if(p.mesh.visible&&!isAnimating&&!swapAnim&&p.baseQuat){ const ph=t*1.2+si*1.7;
+    if(p.mesh.visible&&!isAnimating&&!swapAnim&&!(rotAnim&&rotAnim.mesh===p.mesh)&&p.baseQuat){ const ph=t*1.2+si*1.7;
       const amp=Math.min(1,(t-(p._settle||0)));
       // balancement décoratif uniquement dans le plan (axe Z) : ne change jamais quelle face est en haut/bas.
       const bq=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.cos(ph*0.7)*0.008*amp)); p.mesh.quaternion.copy(p.baseQuat).multiply(bq); }
