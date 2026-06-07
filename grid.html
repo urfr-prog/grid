@@ -76,6 +76,13 @@
     "à l'envers" (partir de la solution et défaire des fusions = solubilité garantie,
     et le nombre de défaire = curseur de difficulté).
 
+  ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v5 : UNDO illimité (snapshot d'état complet, bouton ↶ bas-droite + Ctrl/Cmd+Z) ;
+       PLAN 4 conçu main "l'aimant comme clé" (résolution par ouverture de couloir,
+       vitrine de l'attraction) ; leurre du plan 2 rendu réellement tentant (circle
+       partagé) ; feedback rouge sur contact même-icône / état-différent (palier non
+       franchi, lisible sans tutoriel).
+
   ── RÈGLES DE TRAVAIL DE GREGORY ───────────────────────────────────────────────
   • Analyser les captures en détail avant de coder ; attendre confirmation.
   • Modifier UNIQUEMENT ce qui est demandé (ne pas toucher logo/menu/disposition).
@@ -86,7 +93,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v1 · 4 plans superposés</title>
+<title>ADAM Stack — v5 · undo illimité + plan 4 (aimant) + leurre + feedback état</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -115,11 +122,20 @@
     background:rgba(22,23,38,0.95); border:1px solid rgba(255,255,255,0.07); border-radius:8px;
     padding:8px 16px; font-size:0.7rem; transition:transform 0.25s ease-out; z-index:300; pointer-events:none; }
   .toast.show { transform:translateX(-50%) translateY(0); }
+  .undo-btn { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); right:18px; z-index:200;
+    width:46px; height:46px; border-radius:50%; background:rgba(22,23,38,0.85);
+    border:1px solid rgba(34,211,238,0.3); color:rgba(34,211,238,0.7); font-size:1.35rem; line-height:1;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit;
+    transition:all 0.2s; backdrop-filter:blur(4px); padding:0; }
+  .undo-btn:hover { border-color:#22d3ee; color:#22d3ee; }
+  .undo-btn:active { transform:scale(0.92); }
+  .undo-btn:disabled { opacity:0.25; cursor:default; border-color:rgba(34,211,238,0.12); }
 </style>
 </head>
 <body>
   <canvas id="c"></canvas>
   <div class="nav-dots" id="navDots"></div>
+  <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
   <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -207,7 +223,7 @@ const HEAD_LEVEL=[
 // Cible = nombre de dominos restants pour valider un plan. PARAMÉTRABLE PAR PLAN
 // (voir note de design dans l'en-tête : la condition de victoire est un paramètre,
 //  pas une constante). Plan 0 (tête) = 1. Plan 1 (palier+leurre) = 2 (le leurre reste).
-const TARGET_BY_BOARD=[1, 2, 1, 1];
+const TARGET_BY_BOARD=[1, 2, 1, 2];
 function targetFor(boardIdx){ return TARGET_BY_BOARD[boardIdx] != null ? TARGET_BY_BOARD[boardIdx] : 1; }
 const LANDING_IDX=10;      // case imposée où le résultat descend sur le plan suivant (col2,row2)
 
@@ -240,15 +256,16 @@ function genLevel(){
 //   • Deux paires de blancs (circle/circle et line/line via faces) à monter vers gold.
 //   • Un GOLD DE DÉPART (idx 6) : il ne fusionnera qu'avec un gold construit par le
 //     joueur — illustre le PALIER D'ÉTAT (les blancs ne peuvent pas l'intégrer direct).
-//   • Un LEURRE (idx 19) : tentant car partage une icône, mais le fusionner gâche un
-//     état utile ailleurs. Illustre "QUOI fusionner" plutôt que "comment".
+//   • Un LEURRE (idx 19) : tentant car partage l'icône 'circle' (la plus présente : idx5, idx9),
+//     fusionnable en un seul slide — MAIS le consommer gâche un circle nécessaire pour monter
+//     vers le gold. Illustre "QUOI fusionner" plutôt que "comment".
 //   • LANDING_IDX (10) laissé libre pour le résultat qui descend de la tête.
 const PLAN2_HAND=[
   [5, 'white','circle','line',0],
   [9, 'white','circle','chevron',0],   // partage 'circle' avec idx5
   [13,'white','line','wave',0],        // partage 'line' avec idx5
   [6, 'gold','wave','circle',0],       // GOLD de départ : palier à atteindre
-  [19,'white','chevron','wave',0],     // LEURRE
+  [19,'white','circle','wave',0],      // LEURRE : 'circle' tentant, mais le gâcher casse la montée
 ];
 
 // PLAN 3 — idée : "REMONTER CE QU'ON A PERDU".
@@ -266,7 +283,26 @@ const PLAN3_HAND=[
   [18,'white','line','wave',0],
 ];
 
-const DEMOS=[ HEAD_LEVEL, PLAN2_HAND, PLAN3_HAND, genLevel() ];
+// PLAN 4 — "L'AIMANT COMME CLÉ" (vitrine de la mécanique d'attraction, signature d'ADAM).
+//   Le résultat du plan 3 (un gold) descend ici rétrogradé en SILVER (DEMOTE_BY_BOARD[3]=1),
+//   sur LANDING_IDX (10, col2 row2). Sa face exposée vers le bas est 'wave'.
+//   • idx 22 (col2, row5) : SILVER partenaire 'wave' au bout de la MÊME COLONNE que la case
+//     d'accueil. Couloir vertical → l'AIMANT doit les faire se rejoindre seuls… MAIS :
+//   • idx 14 + idx 18 (col2, row3 et row4) : deux BLANCS qui BOUCHENT le couloir. Tant qu'ils
+//     sont là, corridorEmpty() est faux → pas d'attraction. Le joueur doit d'abord DÉGAGER la
+//     colonne (slide latéral des lignes 3 et 4) pour LIBÉRER l'aimant. La résolution n'est PAS
+//     une fusion adjacente : c'est "ouvrir un couloir et laisser l'attraction faire le travail".
+//   • idx 13 (col1, row3) : LEURRE silver 'chevron' (icône différente) → discernement : ne pas
+//     gaspiller un slide à le coller au silver entrant, il ne fusionnera jamais avec 'wave'.
+//   Objectif (TARGET_BY_BOARD[3]) = 2 : le gold final + le leurre qui reste.
+const PLAN4_HAND=[
+  [22,'silver','wave','line',0],       // partenaire silver 'wave' (bas de col2)
+  [14,'white','circle','chevron',0],   // bouchon de couloir #1 (col2 row3)
+  [18,'white','line','circle',0],      // bouchon de couloir #2 (col2 row4)
+  [13,'silver','chevron','circle',0],  // LEURRE silver (icône différente, col1)
+];
+
+const DEMOS=[ HEAD_LEVEL, PLAN2_HAND, PLAN3_HAND, PLAN4_HAND ];
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -320,6 +356,45 @@ function buildBoards(){
     const mesh=createDominoMesh(face1,face2,state); mesh.visible=false; cubeGroup.add(mesh);
     boards[f][idx]={state,state1:state,state2:state,face1,face2,rotation:rotation||0,mesh,face:f}; }); });
 }
+
+// ════════════════════════════════════════════
+//  HISTORIQUE / UNDO ILLIMITÉ
+//  On snapshote l'ÉTAT LOGIQUE complet (tous les plans + plan courant) AVANT
+//  chaque action du joueur (slide, rotation). Les fusions/aimants/migrations
+//  qui en découlent sont donc capturés par le même snapshot : un undo restaure
+//  l'état exact d'avant le coup, plan courant inclus (donc remonte aussi les
+//  migrations). On ne stocke pas les meshes (recréés à la restauration).
+let history=[];
+function snapshotState(){
+  return {
+    currentBoard,
+    boards: boards.map(arr=>arr.map(p=>p? {
+      state:p.state, state1:p.state1, state2:p.state2,
+      face1:p.face1, face2:p.face2, rotation:p.rotation||0, face:p.face
+    } : null))
+  };
+}
+// Empile l'état AVANT un coup. Appelé une seule fois par geste joueur.
+function pushHistory(){ history.push(snapshotState()); updateUndoBtn(); }
+function restoreState(snap){
+  // purge tous les meshes existants
+  boards.forEach(arr=>arr.forEach(p=>{ if(p&&p.mesh)cubeGroup.remove(p.mesh); }));
+  currentBoard=snap.currentBoard;
+  boards=snap.boards.map((arr,f)=>arr.map(d=>{
+    if(!d)return null;
+    const mesh=createDominoMesh(d.face1,d.face2,d.state); mesh.visible=false; cubeGroup.add(mesh);
+    return {state:d.state,state1:d.state1,state2:d.state2,face1:d.face1,face2:d.face2,rotation:d.rotation||0,mesh,face:f};
+  }));
+  assignFaces(); updateUI(); updateUndoBtn();
+}
+function doUndo(){
+  if(busy||isAnimating||swapAnim||rotAnim||migrating)return;
+  if(!history.length)return;
+  const snap=history.pop();
+  restoreState(snap);
+  showToast('Annulé');
+}
+function updateUndoBtn(){ const b=document.getElementById('undoBtn'); if(b)b.disabled=history.length===0; }
 
 function getTipDir(p){ const rot=(((p.rotation||0)%360)+360)%360;
   if(rot===0)return{dc:0,dr:-1}; if(rot===90)return{dc:1,dr:0}; if(rot===180)return{dc:0,dr:1}; if(rot===270)return{dc:-1,dr:0}; return{dc:0,dr:-1}; }
@@ -401,6 +476,7 @@ function refreshTex(p){ if(!p||!p.mesh)return; const st=p.state1||p.state||'whit
 // ─── TAP = ROTATION (porté du V4 : moitié droite +90, gauche -90) ───
 function rotatePiece(i,clockwise){ const p=curBoard()[i]; if(!p||!p.mesh)return;
   if(busy||isAnimating||swapAnim||rotAnim)return;
+  pushHistory();
   p.rotation=(p.rotation||0)+(clockwise?90:-90);
   // quaternion cible (même convention que placePiece : signe inversé vs CSS)
   const qFrom=p.mesh.quaternion.clone();
@@ -466,14 +542,18 @@ function applySlide(off){
 function commitSlide(){
   const head=curBoard();
   let steps;
+  // un slide qui ne décale rien (multiple du tour complet) ne crée pas d'entrée d'historique
+  const rawSteps=Math.round(dragOff/CELL);
+  const span=(dragAxis==='horizontal')?COLS:ROWS;
+  if(((rawSteps%span)+span)%span!==0){ pushHistory(); }
   if(dragAxis==='horizontal'){
-    steps=Math.round(dragOff/CELL);
+    steps=rawSteps;
     const row=dragRow;
     const newRow=[];
     for(let c=0;c<COLS;c++){ const src=((c-steps)%COLS+COLS)%COLS; newRow[c]=head[row*COLS+src]; }
     for(let c=0;c<COLS;c++){ head[row*COLS+c]=newRow[c]; }
   } else {
-    steps=Math.round(dragOff/CELL);  // off>0 (glissé bas) => descend d'une ligne (row+1)
+    steps=rawSteps;  // off>0 (glissé bas) => descend d'une ligne (row+1)
     const col=dragCol;
     const newCol=[];
     for(let r=0;r<ROWS;r++){ const src=((r-steps)%ROWS+ROWS)%ROWS; newCol[r]=head[src*COLS+col]; }
@@ -558,7 +638,11 @@ function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp
   const sp=wp.clone().project(camera); const r=canvas.getBoundingClientRect(); return r.left+(sp.x*0.5+0.5)*r.width; }
 
 // navigation manuelle (debug / exploration de la pile) au clavier + dots
-document.addEventListener('keydown',e=>{ if(e.key==='ArrowRight'){navRight();e.preventDefault();} else if(e.key==='ArrowLeft'){navLeft();e.preventDefault();} });
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){ doUndo(); e.preventDefault(); return; }
+  if(e.key==='ArrowRight'){navRight();e.preventDefault();} else if(e.key==='ArrowLeft'){navLeft();e.preventDefault();} });
+document.getElementById('undoBtn').addEventListener('click',doUndo);
+updateUndoBtn();
 const dotsEl=document.getElementById('navDots');
 for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>{ if(i!==mod(currentBoard)&&!busy&&!isAnimating){ if(mod(i-currentBoard)===NBOARDS-1)navLeft(); else navRight(); } }); dotsEl.appendChild(d); }
 
@@ -592,7 +676,21 @@ function checkFusions(){
       if(fT&&fB&&fT===fB&&sT===sB){ performFusion(i,iB,'v'); return; }
     }
   }
-  // Aucune fusion adjacente → tenter l'attraction magnétique (rapproche une paire séparée si couloir vide)
+  // Aucune fusion adjacente immédiate → signaler les contacts "même icône, état différent"
+  // (palier d'état non franchi) par un flash rouge, puis tenter l'attraction magnétique.
+  for(let i=0;i<TOTAL;i++){ if(!d[i])continue; const x=colOf(i),y=rowOf(i);
+    if(x<COLS-1&&d[i+1]){
+      const fL=getExposedFace(d[i],'right'), fR=getExposedFace(d[i+1],'left');
+      const sL=getExposedState(d[i],'right'), sR=getExposedState(d[i+1],'left');
+      if(fL&&fR&&fL===fR&&sL!==sR){ flashMismatch(d[i]); flashMismatch(d[i+1]); }
+    }
+    if(y<ROWS-1&&d[i+COLS]){
+      const fT=getExposedFace(d[i],'bottom'), fB=getExposedFace(d[i+COLS],'top');
+      const sT=getExposedState(d[i],'bottom'), sB=getExposedState(d[i+COLS],'top');
+      if(fT&&fB&&fT===fB&&sT!==sB){ flashMismatch(d[i]); flashMismatch(d[i+COLS]); }
+    }
+  }
+  // tenter l'attraction magnétique (rapproche une paire séparée si couloir vide)
   tryMagnet();
 }
 
@@ -722,6 +820,15 @@ function migrateDown(result){
 function flashFusion(p){ if(!p.mesh)return; const g=p.mesh.userData.glow;
   g.material.color.set(0xffffff); g.material.opacity=0.85; p.mesh.scale.set(1.15,1.15,1.15);
   setTimeout(()=>{ p.mesh.scale.set(1,1,1); g.material.opacity=0; },300); }
+// Flash ROUGE bref : même icône en contact mais ÉTAT différent → le palier d'état n'est pas
+// franchi. Lisibilité de la règle sans tutoriel. Purement décoratif (ne déclenche aucune fusion).
+// On pose un timestamp ; la boucle animate (seule autorité sur edge/glow) peint le rouge tant
+// qu'il est actif (MISMATCH_DUR), évitant que la coloration d'état par frame ne l'écrase.
+const MISMATCH_DUR=0.30;
+function flashMismatch(p){ if(!p||!p.mesh)return;
+  const now=clock.getElapsedTime();
+  if(p._mismatchT && now-p._mismatchT < MISMATCH_DUR)return;  // anti-spam : pas de re-flash en boucle
+  p._mismatchT=now; }
 const clock=new THREE.Clock(); let last=0;
 // Cadre la pile pour qu'elle tienne à l'écran quel que soit le format (portrait mobile inclus).
 function fitCamera(){
@@ -771,6 +878,13 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
       ud.edge.material.color.set(st==='cosmic'?0xc4b5fd:st==='supernovae'?0xffeb3b:0xff2060); ud.edge.material.opacity=0.35; ud.glow.material.opacity=0;
     } else if(st!=='white'){ const eCol=st==='silver'?0x22d3ee:st==='gold'?0xffd700:0x34d399; ud.edge.material.color.set(eCol); ud.edge.material.opacity=0.22; ud.glow.material.opacity=0;
     } else { ud.edge.material.opacity=0.15; ud.glow.material.opacity=0; }
+    // Flash ROUGE état-KO : tant qu'actif, peint le halo en rouge (sinon glow=0)
+    if(p._mismatchT){ const age=t-p._mismatchT;
+      if(age<MISMATCH_DUR){ const k=1-age/MISMATCH_DUR;
+        ud.glow.material.color.set(0xff3050); ud.glow.material.opacity=0.6*k;
+        ud.edge.material.color.set(0xff3050); ud.edge.material.opacity=Math.max(ud.edge.material.opacity,0.5*k);
+      } else { p._mismatchT=0; ud.glow.material.color.set(0x22d3ee); }
+    }
     // Atténuation par profondeur réelle : plus c'est loin, plus c'est sombre
     const depth = Math.max(0, -p.mesh.position.z) / (STACK_GAP*(NBOARDS-1));   // 0 devant → 1 fond
     let dim = Math.max(0.18, 1 - depth*1.15);
