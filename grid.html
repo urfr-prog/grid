@@ -90,7 +90,7 @@
         case. Tableau-test calé sur la capture (gold + régresseur même ligne, silver
         dessous). Régression toujours : un cran, consommation, cible tout état ≥ silver.
   v9 : DOMINO RÉGRESSEUR (outil volontaire de descente d'état). Nouveau type de pièce
-       neutre (flag regress, 6e champ des DEMOS), fond BLANC (icônes inversées) distinct des autres. Au
+       neutre (flag regress, 6e champ des DEMOS), icônes GRISES plus épaisses, distinct des autres. Au
        CONTACT ICÔNE avec une pièce d'état ≥ silver (fusion volontaire, mêmes règles de
        contact que les fusions normales), il fait DESCENDRE la cible d'UN CRAN et se
        CONSOMME. Priorité sur la fusion montante. But : débloquer une pièce montée trop
@@ -188,7 +188,7 @@ const ICO={
  chevron:{f1:'M20 32L45 12L70 32',f2:'M20 12L45 32L70 12',t:'path'},
  circle:{f1:'45,22,12',f2:'45,22,12',t:'circle'},
  line:{f1:'15,22,75,22',f2:'15,22,75,22',t:'line'},
- wave:{f1:'M10 22Q28 6 45 22Q62 38 80 22',f2:'M10 22Q28 6 45 22Q62 38 80 22',t:'path'}
+ wave:{f1:'M 29 22 Q 29 12 37 12 Q 45 12 45 22 Q 45 32 53 32 Q 61 32 61 22 Q 61 12 53 12 Q 45 12 45 22 Q 45 32 37 32 Q 29 32 29 22 Z',f2:'M 29 22 Q 29 12 37 12 Q 45 12 45 22 Q 45 32 53 32 Q 61 32 61 22 Q 61 12 53 12 Q 45 12 45 22 Q 45 32 37 32 Q 29 32 29 22 Z',t:'path'}
 };
 function renderIcoSVG(name,f2){
  const d=ICO[name]; if(!d)return''; const data=f2?d.f2:d.f1;
@@ -211,9 +211,11 @@ const _texCache={};
 function getDominoTex(f1,f2,rot,state,regress){
  const k=f1+'|'+f2+'|'+rot+'|'+state+'|'+(regress?'R':''); if(_texCache[k])return _texCache[k];
  const c=STC[state]||STC.white, r=((rot||0)%360+360)%360;
+ const ic = regress ? 'rgba(150,150,160,0.85)' : c.icon;
+ const iw = regress ? 3.4 : 2;
  const top=renderIcoSVG(f1,false), bot=renderIcoSVG(f2,true);
  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90">
-  <style>.i{stroke:${c.icon};stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:none;${c.flt?'filter:'+c.flt:''}}.p{fill:${c.pt};${c.flt?'filter:'+c.flt:''}}.s{stroke:${c.sep};stroke-width:1}</style>
+  <style>.i{stroke:${ic};stroke-width:${iw};stroke-linecap:round;stroke-linejoin:round;fill:none;${regress?'':(c.flt?'filter:'+c.flt:'')}}.p{fill:${ic};${regress?'':(c.flt?'filter:'+c.flt:'')}}.s{stroke:${c.sep};stroke-width:1}</style>
   <g transform="rotate(${r},45,45)"><line class="s" x1="0" y1="45" x2="90" y2="45"/><g>${top}</g><g transform="translate(0,45)">${bot}</g></g></svg>`;
  const S=256, cv=document.createElement('canvas'); cv.width=S; cv.height=S;
  const ctx=cv.getContext('2d');
@@ -223,11 +225,9 @@ function getDominoTex(f1,f2,rot,state,regress){
  const img=new Image();
  img.onload=()=>{
   const m=4,rd=36;
-  ctx.fillStyle=regress?'rgba(245,245,245,0.97)':'rgba(18,19,26,0.95)';
+  ctx.fillStyle='rgba(18,19,26,0.95)';
   ctx.beginPath();ctx.moveTo(m+rd,m);ctx.lineTo(S-m-rd,m);ctx.quadraticCurveTo(S-m,m,S-m,m+rd);ctx.lineTo(S-m,S-m-rd);ctx.quadraticCurveTo(S-m,S-m,S-m-rd,S-m);ctx.lineTo(m+rd,S-m);ctx.quadraticCurveTo(m,S-m,m,S-m-rd);ctx.lineTo(m,m+rd);ctx.quadraticCurveTo(m,m,m+rd,m);ctx.closePath();ctx.fill();
-  if(regress) ctx.filter='invert(1)';
   ctx.drawImage(img,m+2,m+2,S-m*2-4,S-m*2-4);
-  if(regress) ctx.filter='none';
   tex.needsUpdate=true;URL.revokeObjectURL(url);
  };
  img.src=url;_texCache[k]=tex;return tex;
@@ -269,7 +269,7 @@ function drawHalo(cv,r,g,b,phase,intensity){
 }
 
 // ─── TABLEAU-TEST DU RÉGRESSEUR (v10) — positions de la capture ───
-// Le régresseur (fond blanc) est une pièce d'AIMANT comme les autres : il est happé vers une
+// Le régresseur (icônes grises épaisses) est une pièce d'AIMANT comme les autres : il est happé vers une
 // pièce d'état ≥ silver dès lors que, sur un couloir libre, les FACES EN CONTACT portent la même
 // icône. C'est le joueur qui contrôle la rencontre : il ORIENTE la bonne face (tap-rotation 90°)
 // puis ouvre le couloir (slide). Aucune fusion ne se déclenche tant que les faces ne coïncident pas.
@@ -278,7 +278,7 @@ function drawHalo(cv,r,g,b,phase,intensity){
 //   • SILVER 'circle/line' (idx13, row3 col1).
 const HEAD_LEVEL=[
   [4, 'gold','circle','line',0],            // GOLD bloqué
-  [7, 'white','line','circle',0,true],      // RÉGRESSEUR (fond blanc)
+  [7, 'white','line','circle',0,true],      // RÉGRESSEUR (gris épais)
   [13,'silver','circle','line',0],          // SILVER partenaire
 ];
 
@@ -492,7 +492,7 @@ function createDominoMesh(face1,face2,state,regress,rotation){ const grp=new THR
   faceMesh.position.z=SAT_DEPTH/2+0.001; grp.add(faceMesh);
   const bodyGeo=new THREE.ExtrudeGeometry(rrShape(SZ,SZ,RR),{depth:SAT_DEPTH,bevelEnabled:false}); bodyGeo.translate(0,0,-SAT_DEPTH/2);
   grp.add(new THREE.Mesh(bodyGeo,[new THREE.MeshBasicMaterial({color:0x0a0e14,transparent:true,opacity:0.35}),new THREE.MeshBasicMaterial({color:0x10141a,transparent:true,opacity:0.5})]));
-  // régresseur = fond blanc (invert) ; contour/glow identiques aux autres
+  // régresseur = icônes grises épaisses (cf getDominoTex) ; contour/glow identiques aux autres
   const edgeCol = 0x22d3ee;
   const edge=new THREE.LineSegments(new THREE.EdgesGeometry(bodyGeo,15),new THREE.LineBasicMaterial({color:edgeCol,transparent:true,opacity:0.18})); grp.add(edge);
   const glow=new THREE.Mesh(new THREE.ShapeGeometry(rrShape(SZ+0.12,SZ+0.12,RR+0.04)),new THREE.MeshBasicMaterial({color:edgeCol,transparent:true,opacity:0})); glow.position.z=-SAT_DEPTH/2-0.01; grp.add(glow);
@@ -866,12 +866,12 @@ function checkFusions(){
     const iR=(x<COLS-1)?i+1:-1;
     if(iR!==-1&&d[iR]){
       const fL=getExposedFace(d[i],'right'), fR=getExposedFace(d[iR],'left');
-      if(fL&&fR&&fL===fR){ performFusion(i,iR,'h'); return; }
+      if(fL&&fR&&fL===fR&&!(isRegress(d[i])&&isRegress(d[iR]))){ performFusion(i,iR,'h'); return; }
     }
     const iB=(y<ROWS-1)?i+COLS:-1;
     if(iB!==-1&&d[iB]){
       const fT=getExposedFace(d[i],'bottom'), fB=getExposedFace(d[iB],'top');
-      if(fT&&fB&&fT===fB){ performFusion(i,iB,'v'); return; }
+      if(fT&&fB&&fT===fB&&!(isRegress(d[i])&&isRegress(d[iB]))){ performFusion(i,iB,'v'); return; }
     }
   }
   // (v11 : l'état n'étant plus une condition de fusion, le flash rouge "même icône / état
