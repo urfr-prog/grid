@@ -160,12 +160,21 @@
   .undo-btn:hover { border-color:#22d3ee; color:#22d3ee; }
   .undo-btn:active { transform:scale(0.92); }
   .undo-btn:disabled { opacity:0.25; cursor:default; border-color:rgba(34,211,238,0.12); }
+  .opt-btn { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); right:74px; z-index:200;
+    width:46px; height:46px; border-radius:50%; background:rgba(22,23,38,0.85);
+    border:1px solid rgba(34,211,238,0.3); color:rgba(34,211,238,0.7); font-size:1.2rem; line-height:1;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit;
+    transition:all 0.2s; backdrop-filter:blur(4px); padding:0; }
+  .opt-btn:hover { border-color:#22d3ee; color:#22d3ee; }
+  .opt-btn:active { transform:scale(0.92); }
+  .opt-btn.off { color:rgba(34,211,238,0.3); border-color:rgba(34,211,238,0.15); }
 </style>
 </head>
 <body>
   <canvas id="c"></canvas>
   <div class="nav-dots" id="navDots"></div>
   <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
+  <button id="medBtn" class="opt-btn" aria-label="Médianes">▤</button>
   <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -208,15 +217,16 @@ const STC={
  plasma:{border:'rgba(255,32,96,0.75)',icon:'#ff2060',pt:'#ff2060',sep:'rgba(255,32,96,0.5)',flt:'drop-shadow(0 0 7px rgba(255,32,96,0.8))',bw:3}
 };
 const _texCache={};
+let showMedians=true;
 function getDominoTex(f1,f2,rot,state,regress){
- const k=f1+'|'+f2+'|'+rot+'|'+state+'|'+(regress?'R':''); if(_texCache[k])return _texCache[k];
+ const k=f1+'|'+f2+'|'+rot+'|'+state+'|'+(regress?'R':'')+'|'+(showMedians?'M':''); if(_texCache[k])return _texCache[k];
  const c=STC[state]||STC.white, r=((rot||0)%360+360)%360;
  const ic = regress ? 'rgba(150,150,160,0.85)' : c.icon;
  const iw = regress ? 3.4 : 2;
  const top=renderIcoSVG(f1,false), bot=renderIcoSVG(f2,true);
  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90">
   <style>.i{stroke:${ic};stroke-width:${iw};stroke-linecap:round;stroke-linejoin:round;fill:none;${regress?'':(c.flt?'filter:'+c.flt:'')}}.p{fill:${ic};${regress?'':(c.flt?'filter:'+c.flt:'')}}.s{stroke:${c.sep};stroke-width:1}</style>
-  <g transform="rotate(${r},45,45)"><line class="s" x1="0" y1="45" x2="90" y2="45"/><g>${top}</g><g transform="translate(0,45)">${bot}</g></g></svg>`;
+  <g transform="rotate(${r},45,45)">${showMedians?'<line class="s" x1="0" y1="45" x2="90" y2="45"/>':''}<g>${top}</g><g transform="translate(0,45)">${bot}</g></g></svg>`;
  const S=256, cv=document.createElement('canvas'); cv.width=S; cv.height=S;
  const ctx=cv.getContext('2d');
  const tex=new THREE.CanvasTexture(cv); tex.needsUpdate=false;
@@ -750,9 +760,21 @@ function tickSwap(dt){ if(!swapAnim)return; swapAnim.t+=dt*5.0;
 // rotation au tap façon prisme : le mesh PIVOTE physiquement (slerp 250ms easeOutCubic),
 // le logo tourne en continu. À la fin : rotation logique +delta, reset mesh à baseQuat, texture.
 // Si des clics ont été empilés (queue), on enchaîne directement la rotation suivante.
-function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*4.0;   // ~0.25s (250ms)
+function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus vif)
   const pr=Math.min(1,rotAnim.t); const e=1-Math.pow(1-pr,3);
   rotAnim.mesh.quaternion.copy(rotAnim.startQ).slerp(rotAnim.endQ,e);
+  // enchaînement anticipé : si des clics sont empilés, on bascule sur le suivant
+  // dès que le pivot courant est quasi fini (pr≥0.7) → plus aucune micro-pause.
+  if(pr>=0.7 && rotAnim.queue.length){
+    const p=rotAnim.piece;
+    p.rotation=(((p.rotation||0)+rotAnim.delta)%360+360)%360;
+    refreshTex(p);
+    const queue=rotAnim.queue, after=rotAnim.after, next=queue.shift();
+    const base=p.baseQuat?p.baseQuat.clone():new THREE.Quaternion();
+    const localRot=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-next*Math.PI/180);
+    rotAnim={mesh:p.mesh,piece:p,delta:next,startQ:base.clone(),endQ:base.clone().multiply(localRot),t:0,queue,after};
+    return;
+  }
   if(pr>=1){
     const p=rotAnim.piece;
     p.rotation=(((p.rotation||0)+rotAnim.delta)%360+360)%360;
@@ -783,7 +805,9 @@ function pxToWorld(px){ const r=canvas.getBoundingClientRect(); return (px/r.wid
 
 let downX=0,downY=0,downT=0,moved=false;
 canvas.addEventListener('pointerdown',e=>{
-  if(busy||isAnimating||swapAnim)return;
+  // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
+  if(isAnimating||swapAnim||migrating)return;
+  if(busy && !rotAnim)return;
   dragPiece=pieceAt(e.clientX,e.clientY);
   if(!dragPiece)return;
   downX=e.clientX; downY=e.clientY; downT=Date.now(); moved=false;
@@ -795,6 +819,7 @@ canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
   const dx=e.clientX-downX, dy=e.clientY-downY;
   if(dragAxis===null){
+    if(rotAnim) return;   // rotation en cours : on n'initie pas de glissement (seul le tap empile)
     if(Math.abs(dx)>8||Math.abs(dy)>8){ moved=true;
       dragAxis=Math.abs(dx)>Math.abs(dy)?'horizontal':'vertical';
       startSlide(dragAxis,dragRow,dragCol);
@@ -826,6 +851,12 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){ doUndo(); e.preventDefault(); return; }
   if(e.key==='ArrowRight'){navRight();e.preventDefault();} else if(e.key==='ArrowLeft'){navLeft();e.preventDefault();} });
 document.getElementById('undoBtn').addEventListener('click',doUndo);
+document.getElementById('medBtn').addEventListener('click',function(){
+  showMedians=!showMedians;
+  this.classList.toggle('off',!showMedians);
+  for(const k in _texCache)delete _texCache[k];   // purge : la clé inclut l'état médiane
+  boards.forEach(arr=>arr.forEach(p=>{ if(p)refreshTex(p); }));
+});
 updateUndoBtn();
 const dotsEl=document.getElementById('navDots');
 for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>{ if(i!==mod(currentBoard)&&!busy&&!isAnimating){ if(mod(i-currentBoard)===NBOARDS-1)navLeft(); else navRight(); } }); dotsEl.appendChild(d); }
@@ -961,13 +992,63 @@ function performRegress(toolIdx,tgtIdx,dir){
   busy=true;
   const d=curBoard(); const tool=d[toolIdx], tgt=d[tgtIdx];
   const downState=demoteState(tgt.state,1);
-  flashFusion(tgt);
-  if(tool.mesh)removeDomino(tool.mesh); d[toolIdx]=null;   // l'outil se consomme
-  tgt.state=downState; tgt.state1=downState; tgt.state2=downState;
-  refreshTex(tgt);
-  placePiece(tgt,0); tgt._settle=clock.getElapsedTime();
   showToast('Régression → '+downState);
-  setTimeout(()=>{ assignFaces(); updateUI(); busy=false; checkFusions(); checkCompletion(); },420);
+  const m1=tgt.mesh, m2=tool.mesh;
+  if(!m1||!m2){
+    // fallback sans anim
+    flashFusion(tgt);
+    if(tool.mesh)removeDomino(tool.mesh); d[toolIdx]=null;
+    tgt.state=downState; tgt.state1=downState; tgt.state2=downState;
+    refreshTex(tgt); placePiece(tgt,0); tgt._settle=clock.getElapsedTime();
+    setTimeout(()=>{ assignFaces(); updateUI(); busy=false; checkFusions(); checkCompletion(); },120);
+    return;
+  }
+  // ── MÊME SÉQUENCE QUE LA FUSION (move → fade → appear), accélérée ──
+  // L'outil (m2) converge vers la cible (m1), les deux se contractent, fade,
+  // puis la cible RÉAPPARAÎT démotée. Symétrie exacte de la montée.
+  const p1s=m1.position.clone(), p2s=m2.position.clone();
+  const mid=p1s.clone().add(p2s).multiplyScalar(0.5);
+  let elapsed=0; const durMove=200,durFade=110,durAppear=220;
+  const moveAnim=(now)=>{
+    if(!moveAnim._last)moveAnim._last=now;
+    elapsed+=now-moveAnim._last; moveAnim._last=now;
+    const p=Math.min(elapsed/durMove,1), e=easeInOutQuad(p);
+    m1.position.lerpVectors(p1s,mid,e); m2.position.lerpVectors(p2s,mid,e);
+    const sc=1-0.3*e; m1.scale.set(sc,sc,sc); m2.scale.set(sc,sc,sc);
+    if(p<1)requestAnimationFrame(moveAnim);
+    else{ elapsed=0; moveAnim._last=null; requestAnimationFrame(fadeAnim); }
+  };
+  const fadeAnim=(now)=>{
+    if(!fadeAnim._last)fadeAnim._last=now;
+    elapsed+=now-fadeAnim._last; fadeAnim._last=now;
+    const p=Math.min(elapsed/durFade,1);
+    m1.traverse(c=>{ if(c.material&&'opacity'in c.material)c.material.opacity=(1-p); });
+    m2.traverse(c=>{ if(c.material&&'opacity'in c.material)c.material.opacity=(1-p); });
+    if(p<1)requestAnimationFrame(fadeAnim);
+    else{
+      // mutation au creux : l'outil se consomme, la cible descend d'un cran
+      if(tool.mesh)removeDomino(tool.mesh); d[toolIdx]=null;
+      tgt.state=downState; tgt.state1=downState; tgt.state2=downState;
+      refreshTex(tgt); placePiece(tgt,0); tgt._settle=clock.getElapsedTime();
+      const ud=tgt.mesh.userData;
+      ud.faceMesh.material.opacity=1;
+      if(ud.shadow&&ud.shadow.material)ud.shadow.material.opacity=0.45;
+      tgt.mesh.children.forEach(c=>{
+        if(Array.isArray(c.material)){ if(c.material[0])c.material[0].opacity=0.35; if(c.material[1])c.material[1].opacity=0.5; }
+      });
+      tgt.mesh.scale.set(0.3,0.3,0.3); elapsed=0; fadeAnim._last=null;
+      const appearAnim=(now2)=>{
+        if(!appearAnim._last)appearAnim._last=now2;
+        elapsed+=now2-appearAnim._last; appearAnim._last=now2;
+        const p2v=Math.min(elapsed/durAppear,1), e2=easeOutCubic(p2v);
+        const sc2=0.3+0.7*e2; tgt.mesh.scale.set(sc2,sc2,sc2);
+        if(p2v<1)requestAnimationFrame(appearAnim);
+        else{ tgt.mesh.scale.set(1,1,1); assignFaces(); updateUI(); busy=false; checkFusions(); checkCompletion(); }
+      };
+      requestAnimationFrame(appearAnim);
+    }
+  };
+  requestAnimationFrame(moveAnim);
 }
 
 // Fusion simple V4 : les deux faces qui se touchent disparaissent, les faces partenaires
@@ -1003,7 +1084,7 @@ function performFusion(i1,i2,dir){
   // ── SÉQUENCE D'ANIMATION PORTÉE À L'IDENTIQUE DE prisme : move(400) → fade(200) → appear(400) ──
   const p1s=m1.position.clone(), p2s=m2.position.clone();
   const mid=p1s.clone().add(p2s).multiplyScalar(0.5);
-  let elapsed=0; const durMove=400,durFade=200,durAppear=400;
+  let elapsed=0; const durMove=200,durFade=110,durAppear=220;
   const moveAnim=(now)=>{
     if(!moveAnim._last)moveAnim._last=now;
     elapsed+=now-moveAnim._last; moveAnim._last=now;
