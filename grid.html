@@ -85,13 +85,14 @@
   2. [FAIT v18] LE FAUX ORDRE : deux fusions possibles dès le départ, mais la
      première déclenche un aimant parasite qui vole la pièce-clé de la seconde.
      L'ordre des fusions devient un CHOIX, pas une exécution. → PLAN9_HAND.
-  3. [À FAIRE] LE MUET : un domino aux faces vierges (icône null). Ne fusionne
-     jamais, ne s'aimante jamais — pure masse qui bouche les couloirs. Leurre
-     structurel : pas tentant, juste encombrant. corridorEmpty le gère déjà.
-  4. [À FAIRE] LA PIÈCE COMMANDÉE : objectif "fabriquer un gold-circle" au lieu
-     de "il reste N". Ouvre le vrai discernement (plusieurs chemins, un seul
-     produit la bonne pièce). NOTE : résoudrait aussi la fragilité du compte
-     quand des lignes alternatives consomment plus/moins de pièces.
+  3. [FAIT v19] LE MUET : un domino aux faces vierges (face1/face2 = null). Ne
+     fusionne jamais (getExposedFace → null), ne s'aimante jamais — pure masse qui
+     bouche les couloirs. Rendu PIERRE (dalle granit). → PLAN10_HAND "La Digue",
+     où il PROTÈGE par défaut (inversion de l'horloge où le défaut piégeait).
+  4. [FAIT v19] LA PIÈCE COMMANDÉE : objectif "fabriquer telle pièce" (ÉTAT +
+     ICÔNE portée) au lieu de "il reste N". GOAL_BY_BOARD + pastille en haut de
+     l'écran. C'est la pièce commandée elle-même qui migre → supprime la fragilité
+     du compte ET celle du plus-petit-index. → PLAN11_HAND "L'Autel".
   5. [À FAIRE] LE PASSAGER : le plan N impose l'ICÔNE du résultat qui descend,
      parce que le plan N+1 en a besoin. Penser deux plans à l'avance — la chaîne
      devient stratégie, plus seulement narration. (Extension de la pièce commandée.)
@@ -99,6 +100,25 @@
      lieu de casser. Rare, placée tard dans la pile : après les épreuves, le don.
 
   ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v19 : LE MUET + LA PIÈCE COMMANDÉE (kaizen 3 et 4), NBOARDS 9→11. La grande
+        nouveauté : LES PLANS 10 ET 11 SONT EMBOÎTÉS — la chaîne devient stratégie.
+        • PLAN 10 "LA DIGUE" : l'entrant du plan 9 est DÉTERMINISTE (emerald
+          line/wave, plan 9 forcé) → il devient un PERSONNAGE, plus du bruit. Un
+          muet fait barrage en col2 entre l'entrant et une proie ('wave'). Ouvrir
+          la digue sans préparer = l'aimant dévore la proie → le plan SE COMPLÈTE
+          QUAND MÊME, mais produit un cosmic line/CHEVRON au lieu de line/LINE.
+          Punition différée : c'est le plan 11 qui jugera. Jamais de blocage dur.
+        • PLAN 11 "L'AUTEL" : COMMANDE = supernovae portant 'line'. Le bon cosmic
+          s'offre à l'autel X en UN TAP (récompense instantanée). Le cosmic
+          gourmand y produit un circle/chevron qui échoue à la commande → chemin
+          de secours toujours ouvert : unir W ('line/line' — l'assurance : toute
+          union W+C porte 'line') et C cosmique. L'ordre cyclique de la ligne 1
+          (W, muet, C) place C toujours à gauche de W : orientation ou jonction
+          verticale requise. La leçon de l'horloge, en filigrane.
+        • Technique : muet = faces null (aucun code de règle à toucher : fusion,
+          aimant et régresseur exigent des faces non-nulles) ; rendu dalle granit
+          dans getDominoTex. checkCompletion : branche GOAL prioritaire — la pièce
+          commandée migre elle-même dès qu'elle existe. Pastille #goalTag (updateUI).
   v18 : DEUX PLANS NOUVEAUX (kaizen 1 et 2 du backlog), NBOARDS 7→9.
         • PLAN 8 "L'HORLOGE" : cadran plein en ligne 5, sommet gold en haut de
           col1, couloir verrouillé. Le sommet absorbe les 4 pèlerins dans le SEUL
@@ -160,7 +180,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v18 · L'Horloge & Le Faux Ordre (+ backlog kaizen)</title>
+<title>ADAM Stack — v19 · Le Muet & La Pièce Commandée (la chaîne devient stratégie)</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -185,6 +205,10 @@
   .legend-item { display:flex; align-items:center; gap:4px; padding:3px 8px; border-radius:6px;
     border:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); }
   .legend-dot { width:8px; height:8px; border-radius:50%; }
+  .goal-tag { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 14px); left:50%; transform:translateX(-50%);
+    display:none; align-items:center; gap:4px; z-index:210; padding:6px 12px; border-radius:9px;
+    background:rgba(22,23,38,0.88); border:1px solid rgba(255,255,255,0.12); backdrop-filter:blur(4px);
+    font-size:0.58rem; letter-spacing:0.14em; color:rgba(220,220,235,0.75); pointer-events:none; }
   .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(60px);
     background:rgba(22,23,38,0.95); border:1px solid rgba(255,255,255,0.07); border-radius:8px;
     padding:8px 16px; font-size:0.7rem; transition:transform 0.25s ease-out; z-index:300; pointer-events:none; }
@@ -213,10 +237,11 @@
   <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
   <button id="medBtn" class="opt-btn" aria-label="Médianes">▤</button>
   <div class="toast" id="toast"></div>
+  <div class="goal-tag" id="goalTag"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const COLS=4, ROWS=6, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=9;
+const COLS=4, ROWS=6, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=11;
 
 const STATE_ORDER=['white','silver','gold','emerald','cosmic','supernovae','plasma'];
 const MOVE_DIRS={ white:null, silver:[[1,0],[-1,0]], gold:[[1,1],[1,-1],[-1,1],[-1,-1]],
@@ -260,10 +285,17 @@ function getDominoTex(f1,f2,rot,state,regress){
  const c=STC[state]||STC.white, r=((rot||0)%360+360)%360;
  const ic = regress ? 'rgba(110,110,122,1)' : c.icon;
  const iw = regress ? 4.6 : 2;
+ // LE MUET (kaizen 3) : aucune face (f1 et f2 null) → dalle de PIERRE. Aucune règle
+ // à toucher : fusion, aimant et régresseur exigent des faces non-nulles.
+ const mute = !f1 && !f2;
  const top=renderIcoSVG(f1,false), bot=renderIcoSVG(f2,true);
+ const inner = mute
+  ? `<rect x="13" y="7" width="64" height="76" rx="10" fill="rgba(56,57,66,0.94)" stroke="rgba(124,126,140,0.55)" stroke-width="2.5"/>
+     <path d="M28 22 L43 36 L36 50 M50 58 L60 70 M55 18 L62 28" stroke="rgba(28,28,36,0.85)" stroke-width="2.2" fill="none" stroke-linecap="round"/>`
+  : `${showMedians?'<line class="s" x1="0" y1="45" x2="90" y2="45"/>':''}<g>${top}</g><g transform="translate(0,45)">${bot}</g>`;
  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90">
   <style>.i{stroke:${ic};stroke-width:${iw};stroke-linecap:round;stroke-linejoin:round;fill:none;${regress?'':(c.flt?'filter:'+c.flt:'')}}.p{fill:${ic};${regress?'':(c.flt?'filter:'+c.flt:'')}}.s{stroke:${c.sep};stroke-width:1}</style>
-  <g transform="rotate(${r},45,45)">${showMedians?'<line class="s" x1="0" y1="45" x2="90" y2="45"/>':''}<g>${top}</g><g transform="translate(0,45)">${bot}</g></g></svg>`;
+  <g transform="rotate(${r},45,45)">${inner}</g></svg>`;
  const S=256, cv=document.createElement('canvas'); cv.width=S; cv.height=S;
  const ctx=cv.getContext('2d');
  const tex=new THREE.CanvasTexture(cv); tex.needsUpdate=false;
@@ -333,7 +365,13 @@ const HEAD_LEVEL=[
 // Cible = nombre de dominos restants pour valider un plan. PARAMÉTRABLE PAR PLAN
 // (voir note de design dans l'en-tête : la condition de victoire est un paramètre,
 //  pas une constante). Plan 0 (tête) = 1. Plan 1 (palier+leurre) = 2 (le leurre reste).
-const TARGET_BY_BOARD=[1, 2, 1, 2, 2, 3, 2, 4, 2];
+const TARGET_BY_BOARD=[1, 2, 1, 2, 2, 3, 2, 4, 2, 3, 1];
+// ─── LA PIÈCE COMMANDÉE (kaizen 4) : objectif par pièce, prioritaire sur le compte ───
+// GOAL_BY_BOARD[N] = {state, icon} : le plan N se complète dès qu'EXISTE une pièce de
+// l'état commandé portant l'icône commandée sur l'une de ses faces — et c'est CETTE
+// pièce qui migre. Plus de fragilité du compte ni du plus-petit-index sur ces plans.
+const GOAL_BY_BOARD=[null,null,null,null,null,null,null,null,null,null,{state:'supernovae',icon:'line'}];
+function goalFor(boardIdx){ return GOAL_BY_BOARD[boardIdx]||null; }
 function targetFor(boardIdx){ return TARGET_BY_BOARD[boardIdx] != null ? TARGET_BY_BOARD[boardIdx] : 1; }
 const LANDING_IDX=10;      // case imposée où le résultat descend sur le plan suivant (col2,row2)
 
@@ -342,7 +380,7 @@ const LANDING_IDX=10;      // case imposée où le résultat descend sur le plan
 // Donne du sens à la descente : franchir a un COÛT, on ne cumule pas la puissance.
 // Ex : un emerald qui descend vers le plan 2 (perte de 2) arrive en silver.
 // 0 = pas de perte ; 1 = un cran ; 2 = deux crans ; etc.
-const DEMOTE_BY_BOARD=[0, 0, 2, 1, 0, 1, 0, 2, 5];
+const DEMOTE_BY_BOARD=[0, 0, 2, 1, 0, 1, 0, 2, 5, 0, 0];  // 9 et 10 : l'entrant arrive INTACT (il est la clé)
 function demoteFor(boardIdx){ return DEMOTE_BY_BOARD[boardIdx] != null ? DEMOTE_BY_BOARD[boardIdx] : 0; }
 function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
@@ -528,7 +566,49 @@ const PLAN9_HAND=[
   [7, 'white','wave','circle',0],       // Q  — partenaire vrai de P (un tap de P suffit)
 ];
 
-const DEMOS=[ HEAD_LEVEL, PLAN2_HAND, PLAN3_HAND, PLAN4_HAND, PLAN5_HAND, PLAN6_HAND, PLAN7_HAND, PLAN8_HAND, PLAN9_HAND ];
+// ─── PLANS v19 (kaizen 3 & 4 — EMBOÎTÉS : le 11 juge ce que le 10 a produit) ──
+
+// PLAN 10 — "LA DIGUE" (kaizen 3 : le muet). INVERSION DE L'HORLOGE : cette fois
+//   le défaut PROTÈGE. L'entrant du plan 9 est déterministe (emerald 'line/wave',
+//   bas 'wave', intact : DEMOTE=0) — il n'est plus du bruit, c'est un personnage.
+//   Le MUET (idx14) fait digue en col2 entre l'entrant et la proie V (idx18,
+//   silver, haut 'wave', collée sous la digue).
+//   • GOURMAND : glisser la ligne 3 (la digue part) → l'aimant dévore V →
+//     cosmic line/CHEVRON. Compte atteint (3) → LE PLAN SE COMPLÈTE QUAND MÊME.
+//     La punition est DIFFÉRÉE : ce cosmic échouera à la commande du plan 11.
+//   • JUSTE : ligne 4 de +2 D'ABORD (K↔V échangent : ordre cyclique à 2 pièces,
+//     un seul glissement), PUIS ouvrir la digue → l'aimant unit l'entrant à K →
+//     cosmic line/LINE — la pièce que l'autel attend.
+//   Cible = 3 (cosmic + muet + la pièce écartée). Jamais de blocage dur.
+const PLAN10_HAND=[
+  [14,'white',null,null,0],            // LE MUET — la digue (col2, ligne 3)
+  [18,'silver','wave','chevron',0],    // V — la proie ('wave' en haut, sous la digue)
+  [16,'white','wave','line',0],        // K — l'offrande juste ('wave' en haut, même ligne que V)
+];
+
+// PLAN 11 — "L'AUTEL" (kaizen 4 : la pièce commandée). COMMANDE = SUPERNOVAE
+//   portant 'line' (pastille en haut de l'écran). Deux chemins, un juge :
+//   • L'AUTEL X (idx2, rot90 = inerte tant qu'on ne le tape pas) : UN TAP (-90)
+//     expose 'line' vers le bas → l'aimant fait MONTER l'entrant → supernovae
+//     'circle/⟨face2 de l'entrant⟩'. Cosmic juste → circle/LINE : COMMANDE
+//     ACCOMPLIE EN UN GESTE (la récompense du plan 10 bien joué). Cosmic
+//     gourmand → circle/chevron : la commande reste affichée, l'autel est froid.
+//   • LE CHEMIN DE SECOURS (toujours ouvert, même autel consumé) : unir W (idx4,
+//     'line/line') et C (idx7, cosmic 'wave/line'). W porte 'line' sur ses DEUX
+//     faces : c'est l'ASSURANCE — quelle que soit l'orientation de leur rencontre
+//     (verticale ou horizontale, vérifié), le résultat supernovae porte 'line' et
+//     accomplit la commande. L'ordre cyclique de la ligne 1 (W, muet, C) fait que
+//     C arrive toujours à GAUCHE de W : il faut donc orienter C en rot270 (droite
+//     'line') ou passer par une jonction verticale via les colonnes.
+//   Le muet (idx5) retarde la jonction — et déplacé en col2, il MURE l'autel.
+const PLAN11_HAND=[
+  [2, 'white','circle','line',90],     // X — L'AUTEL (rot90 : ne s'éveille qu'au tap)
+  [4, 'white','line','line',0],        // W — le porteur de 'line'
+  [5, 'white',null,null,0],            // LE MUET — verrou cyclique de la ligne 1
+  [7, 'cosmic','wave','line',90],      // C — la réserve cosmique (gauche 'line')
+];
+
+const DEMOS=[ HEAD_LEVEL, PLAN2_HAND, PLAN3_HAND, PLAN4_HAND, PLAN5_HAND, PLAN6_HAND, PLAN7_HAND, PLAN8_HAND, PLAN9_HAND, PLAN10_HAND, PLAN11_HAND ];
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -711,7 +791,18 @@ function onRotationComplete(){ currentBoard=mod(currentBoard+navDir); navDir=0;
   cubeGroup.quaternion.copy(targetQuat); assignFaces(); isAnimating=false; busy=false; updateUI();
   setTimeout(checkFusions,100); }
 
-function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===mod(currentBoard))); }
+function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===mod(currentBoard))); updateGoalTag(); }
+// Pastille "COMMANDE" : visible uniquement sur un plan à objectif-pièce.
+function updateGoalTag(){
+  const el=document.getElementById('goalTag'); const g=goalFor(mod(currentBoard));
+  if(!g){ el.style.display='none'; return; }
+  const c=STC[g.state]||STC.white;
+  el.style.display='flex'; el.style.borderColor=c.border;
+  el.innerHTML='COMMANDE&nbsp;·&nbsp;<b style="color:'+c.icon+'">'+g.state.toUpperCase()+'</b>'+
+    '<svg viewBox="10 4 70 34" width="30" height="15" style="margin-left:5px"><style>.gi{stroke:'+c.icon+
+    ';stroke-width:4;stroke-linecap:round;stroke-linejoin:round;fill:none}</style>'+
+    renderIcoSVG(g.icon,false).replace('class="i"','class="gi"')+'</svg>';
+}
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1200); }
 
 // ─── FACES EXPOSÉES (porté du V4) ───
@@ -1228,6 +1319,14 @@ function countPieces(arr){ let n=0; for(const p of arr) if(p) n++; return n; }
 function checkCompletion(){
   if(busy||isAnimating||swapAnim||migrating)return;
   const head=curBoard();
+  // LA PIÈCE COMMANDÉE : prioritaire. Dès qu'une pièce de l'état commandé porte
+  // l'icône commandée, ELLE migre (peu importe le compte et l'index des restes).
+  const goal=goalFor(mod(currentBoard));
+  if(goal){
+    for(let i=0;i<TOTAL;i++){ const p=head[i];
+      if(p&&!p.regress&&(p.face1||p.face2)&&p.state===goal.state&&(p.face1===goal.icon||p.face2===goal.icon)){ migrateDown(p); return; } }
+    return;
+  }
   if(countPieces(head)!==targetFor(currentBoard))return;
   // récupérer la pièce-résultat à faire migrer (la première restante)
   let result=null;
