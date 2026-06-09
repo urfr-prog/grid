@@ -76,7 +76,44 @@
     "à l'envers" (partir de la solution et défaire des fusions = solubilité garantie,
     et le nombre de défaire = curseur de difficulté).
 
+  ── BACKLOG KAIZEN (le fil — toute instance doit le connaître) ─────────────────
+  Six pistes validées avec Gregory, du zéro-code vers la brique. État entre [ ].
+  1. [FAIT v18] L'HORLOGE : un plan où le wrap-around est la clé. La ligne du bas
+     est un CADRAN (pleine = tout glissement est une rotation pure). On choisit la
+     PHASE pour décider quelle pièce s'aligne sur le couloir. Vitrine du wrap,
+     comme le plan 4 l'est pour l'aimant. → PLAN8_HAND.
+  2. [FAIT v18] LE FAUX ORDRE : deux fusions possibles dès le départ, mais la
+     première déclenche un aimant parasite qui vole la pièce-clé de la seconde.
+     L'ordre des fusions devient un CHOIX, pas une exécution. → PLAN9_HAND.
+  3. [À FAIRE] LE MUET : un domino aux faces vierges (icône null). Ne fusionne
+     jamais, ne s'aimante jamais — pure masse qui bouche les couloirs. Leurre
+     structurel : pas tentant, juste encombrant. corridorEmpty le gère déjà.
+  4. [À FAIRE] LA PIÈCE COMMANDÉE : objectif "fabriquer un gold-circle" au lieu
+     de "il reste N". Ouvre le vrai discernement (plusieurs chemins, un seul
+     produit la bonne pièce). NOTE : résoudrait aussi la fragilité du compte
+     quand des lignes alternatives consomment plus/moins de pièces.
+  5. [À FAIRE] LE PASSAGER : le plan N impose l'ICÔNE du résultat qui descend,
+     parce que le plan N+1 en a besoin. Penser deux plans à l'avance — la chaîne
+     devient stratégie, plus seulement narration. (Extension de la pièce commandée.)
+  6. [À FAIRE] LA BÉNÉDICTION : un DEMOTE négatif — une traversée qui ÉLÈVE au
+     lieu de casser. Rare, placée tard dans la pile : après les épreuves, le don.
+
   ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v18 : DEUX PLANS NOUVEAUX (kaizen 1 et 2 du backlog), NBOARDS 7→9.
+        • PLAN 8 "L'HORLOGE" : cadran plein en ligne 5, sommet gold en haut de
+          col1, couloir verrouillé. Le sommet absorbe les 4 pèlerins dans le SEUL
+          ordre viable (gold→emerald→cosmic→supernovae→PLASMA) ; la phase du
+          cadran décide qui monte. Piège posé à l'heure par défaut.
+        • PLAN 9 "LE FAUX ORDRE" : deux fusions à un tap chacune ; la mauvaise
+          en premier fait voler la pièce-clé par aimant parasite, sous les yeux
+          du joueur. L'icône qui empoisonne au début ('circle') est la clé du final.
+        • Contrainte découverte : checkCompletion fait migrer la PREMIÈRE pièce
+          restante PAR INDEX → le résultat final d'un plan doit naître à un index
+          < LANDING_IDX (10), sinon c'est l'ENTRANT qui traverse. Les deux plans
+          forment leur final à idx1 / idx0. À retenir pour tout futur plan.
+        • Géométrie clé du design : rot 0 n'expose que haut/bas, rot 90/270 que
+          gauche/droite → une pièce rot 90 dans un couloir vertical est un VERROU
+          parfait (bloque corridorEmpty, ne peut jamais fusionner verticalement).
   v11 : LA FUSION NE DÉPEND PLUS QUE DE L'ICÔNE (logique du concept premier / index).
         L'état n'est plus une condition. Résultat = UN CRAN AU-DESSUS DU PLUS HAUT des
         deux pièces (règle 1A) : blanc+blanc→silver, gold+silver→emerald, gold+gold→
@@ -123,7 +160,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v11 · fusion sur icône, montée au-dessus du max (blanc/régresseur = ±1)</title>
+<title>ADAM Stack — v18 · L'Horloge & Le Faux Ordre (+ backlog kaizen)</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -179,7 +216,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const COLS=4, ROWS=6, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=7;
+const COLS=4, ROWS=6, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=9;
 
 const STATE_ORDER=['white','silver','gold','emerald','cosmic','supernovae','plasma'];
 const MOVE_DIRS={ white:null, silver:[[1,0],[-1,0]], gold:[[1,1],[1,-1],[-1,1],[-1,-1]],
@@ -296,7 +333,7 @@ const HEAD_LEVEL=[
 // Cible = nombre de dominos restants pour valider un plan. PARAMÉTRABLE PAR PLAN
 // (voir note de design dans l'en-tête : la condition de victoire est un paramètre,
 //  pas une constante). Plan 0 (tête) = 1. Plan 1 (palier+leurre) = 2 (le leurre reste).
-const TARGET_BY_BOARD=[1, 2, 1, 2, 2, 3, 2];
+const TARGET_BY_BOARD=[1, 2, 1, 2, 2, 3, 2, 4, 2];
 function targetFor(boardIdx){ return TARGET_BY_BOARD[boardIdx] != null ? TARGET_BY_BOARD[boardIdx] : 1; }
 const LANDING_IDX=10;      // case imposée où le résultat descend sur le plan suivant (col2,row2)
 
@@ -305,7 +342,7 @@ const LANDING_IDX=10;      // case imposée où le résultat descend sur le plan
 // Donne du sens à la descente : franchir a un COÛT, on ne cumule pas la puissance.
 // Ex : un emerald qui descend vers le plan 2 (perte de 2) arrive en silver.
 // 0 = pas de perte ; 1 = un cran ; 2 = deux crans ; etc.
-const DEMOTE_BY_BOARD=[0, 0, 2, 1, 0, 1, 0];
+const DEMOTE_BY_BOARD=[0, 0, 2, 1, 0, 1, 0, 2, 5];
 function demoteFor(boardIdx){ return DEMOTE_BY_BOARD[boardIdx] != null ? DEMOTE_BY_BOARD[boardIdx] : 0; }
 function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
@@ -438,7 +475,60 @@ const PLAN7_HAND=[
   [21,'white','chevron','circle',0],     // partenaire final
 ];
 
-const DEMOS=[ HEAD_LEVEL, PLAN2_HAND, PLAN3_HAND, PLAN4_HAND, PLAN5_HAND, PLAN6_HAND, PLAN7_HAND ];
+// ─── PLANS v18 (kaizen 1 & 2 du backlog) ──────────────────────────────────────
+
+// PLAN 8 — "L'HORLOGE" (kaizen 1 : le wrap-around comme clé).
+//   La ligne 5 est PLEINE : 4 pèlerins blancs sur 4 colonnes → tout glissement de
+//   cette ligne est une ROTATION PURE du cadran (le wrap est permanent et visible).
+//   Le SOMMET (gold, haut de col1) doit absorber les QUATRE pèlerins, un par un :
+//   chaque fusion remplace sa face basse par la face2 du pèlerin absorbé, et c'est
+//   cette nouvelle face qui dicte QUI peut monter ensuite. Un seul ordre survit :
+//     'wave'→D1 (face basse devient 'line') → D3 ('wave') → D2 ('chevron') → D4.
+//   Montée : gold→emerald→cosmic→supernovae→PLASMA. Le choix pivot est le 1er :
+//   D1 et D2 exposent tous deux 'wave', mais D2 mène à l'impasse ('circle' final
+//   sans pèlerin 'circle' restant). ET D2 EST POSÉ À L'HEURE PAR DÉFAUT (col1) :
+//   ouvrir le couloir sans phaser le cadran condamne la partie. Phaser D'ABORD.
+//   • idx1  : SOMMET gold 'circle/wave' (face basse 'wave' au départ).
+//   • idx13 : VERROU rot90 du couloir col1 (rot90 = jamais de face verticale →
+//     verrou parfait ; glisser la ligne 3 = donner l'heure de départ).
+//   • idx18 : VERROU rot90 PERMANENT col2 — bouclier : isole l'entrant (idx10,
+//     icônes imprévisibles) du cadran. Ne jamais glisser la ligne 4.
+//   • idx20..23 : le CADRAN (D1..D4). Solution : ligne5 +1 (D1 à l'heure, D4
+//     wrappe c3→c0), ligne3 +1 (ouverture), montée ; puis +2, montée ; +1 ; +2.
+//   Cible = 4 : PLASMA (idx1, migre car plus petit index) + 2 verrous + entrant.
+const PLAN8_HAND=[
+  [1, 'gold','circle','wave',0],        // LE SOMMET (gravira jusqu'à plasma)
+  [13,'white','chevron','line',90],     // VERROU col1 (l'heure de départ)
+  [18,'white','circle','chevron',90],   // VERROU col2 permanent (bouclier entrant)
+  [20,'white','wave','line',0],         // D1 — la bonne première heure
+  [21,'white','wave','chevron',0],      // D2 — LE PIÈGE, posé à l'heure par défaut
+  [22,'white','line','wave',0],         // D3
+  [23,'white','chevron','circle',0],    // D4 — la dernière heure
+];
+
+// PLAN 9 — "LE FAUX ORDRE" (kaizen 2 : l'ordre des fusions est un choix).
+//   Deux fusions disponibles, UN TAP chacune. Scène en lignes 0-1 (final à idx0
+//   < LANDING_IDX → c'est bien lui qui migre, pas l'entrant).
+//   • Fusion A (tentante) : tap A2 (+90) → contact 'chevron' avec A1 → R1 gold
+//     'wave/circle' rot90, qui expose 'wave' à DROITE… vers P (idx3, rot90,
+//     gauche='wave'), couloir tout juste vidé → L'AIMANT VOLE P INSTANTANÉMENT.
+//     P consumé à tort, Q orpheline, compte bloqué → impasse (undo).
+//   • Fusion B (la bonne, D'ABORD) : tap P (-90, rot90→0) → sa face basse 'wave'
+//     rencontre Q dessous → R2 silver 'line/circle' rot0, inerte horizontalement,
+//     hors de portée du parasite.
+//   Ensuite seulement la fusion A, puis le FINAL : R1 (rot270, droite='circle')
+//   + R2 (rot90, gauche='circle') → aimant sur la ligne 0 → EMERALD à idx0.
+//   La morale : l'icône 'circle' qui aurait empoisonné au début est la clé du final.
+//   Cible = 2 : emerald final + entrant (silver — l'ex-plasma du plan 8, déchu de
+//   5 crans à la traversée : la chute suprême ; géométriquement inerte en col2).
+const PLAN9_HAND=[
+  [0, 'silver','circle','chevron',270], // A1 — droite 'chevron' (gauche au bord)
+  [1, 'silver','wave','chevron',0],     // A2 — un tap (+90) déclenche la fusion A
+  [3, 'white','line','wave',90],        // P  — gauche 'wave' EXPOSÉE : proie du parasite
+  [7, 'white','wave','circle',0],       // Q  — partenaire vrai de P (un tap de P suffit)
+];
+
+const DEMOS=[ HEAD_LEVEL, PLAN2_HAND, PLAN3_HAND, PLAN4_HAND, PLAN5_HAND, PLAN6_HAND, PLAN7_HAND, PLAN8_HAND, PLAN9_HAND ];
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
