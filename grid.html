@@ -127,7 +127,7 @@
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
-    background:#0a0e14; min-height:100vh;
+    background:#000000; min-height:100vh;
     display:flex; flex-direction:column; justify-content:center; align-items:center;
     font-family:'SF Mono','Fira Code',monospace; color:rgba(220,220,235,0.9);
     overflow:hidden; user-select:none;
@@ -221,8 +221,8 @@ let showMedians=true;
 function getDominoTex(f1,f2,rot,state,regress){
  const k=f1+'|'+f2+'|'+rot+'|'+state+'|'+(regress?'R':'')+'|'+(showMedians?'M':''); if(_texCache[k])return _texCache[k];
  const c=STC[state]||STC.white, r=((rot||0)%360+360)%360;
- const ic = regress ? 'rgba(150,150,160,0.85)' : c.icon;
- const iw = regress ? 3.4 : 2;
+ const ic = regress ? 'rgba(110,110,122,1)' : c.icon;
+ const iw = regress ? 4.6 : 2;
  const top=renderIcoSVG(f1,false), bot=renderIcoSVG(f2,true);
  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90">
   <style>.i{stroke:${ic};stroke-width:${iw};stroke-linecap:round;stroke-linejoin:round;fill:none;${regress?'':(c.flt?'filter:'+c.flt:'')}}.p{fill:${ic};${regress?'':(c.flt?'filter:'+c.flt:'')}}.s{stroke:${c.sep};stroke-width:1}</style>
@@ -442,7 +442,7 @@ const DEMOS=[ HEAD_LEVEL, PLAN2_HAND, PLAN3_HAND, PLAN4_HAND, PLAN5_HAND, PLAN6_
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-renderer.setSize(window.innerWidth,window.innerHeight); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x0a0e14);
+renderer.setSize(window.innerWidth,window.innerHeight); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(42,window.innerWidth/window.innerHeight,0.1,200); scene.add(new THREE.AmbientLight(0xffffff,0.95));
 
