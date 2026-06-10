@@ -241,7 +241,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const COLS=4, ROWS=6, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=11;
+const COLS=4, ROWS=6, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=1;
 
 const STATE_ORDER=['white','silver','gold','emerald','cosmic','supernovae','plasma'];
 const MOVE_DIRS={ white:null, silver:[[1,0],[-1,0]], gold:[[1,1],[1,-1],[-1,1],[-1,-1]],
@@ -355,260 +355,62 @@ function drawHalo(cv,r,g,b,phase,intensity){
 //   • GOLD 'circle/line' (idx4, row1 col0).
 //   • RÉGRESSEUR 'line/circle' (idx7, row1 col3) — comme la capture.
 //   • SILVER 'circle/line' (idx13, row3 col1).
-const HEAD_LEVEL=[
-  [4, 'gold','circle','line',0],            // GOLD bloqué
-  [7, 'white','line','circle',0,true],      // RÉGRESSEUR (gris épais)
-  [13,'silver','circle','line',0],          // SILVER partenaire
+// ═══════════════════════════════════════════════════════════════════════════
+//  v20 : PLATEAU UNIQUE + AIMANT-CHAÎNE BILATÉRAL
+//  Les anciens niveaux (chaîne entre plans, migration, demote) sont retirés :
+//  on ne grade plus les plateaux. Un seul plan jouable, conçu pour exposer les
+//  possibilités de fusion. La richesse reviendra par de nouveaux DEMO_LEVEL.
+//
+//  NOUVELLE MÉCANIQUE — L'AIMANT-CHAÎNE (extension de tryMagnet) :
+//  Une pièce CENTRALE qui, après un pivot, expose une face qui matche une pièce
+//  À DISTANCE d'un côté ET une autre face qui matche une pièce à distance du côté
+//  OPPOSÉ (couloirs vides des deux côtés) → les DEUX extrémités sont happées vers
+//  le centre et fusionnent en CHAÎNE À 3 (faces de contact annulées, faces des
+//  extrémités → résultat, état +1). Si un seul côté matche → aimant simple (comme
+//  avant). Vertical (haut+bas) ET horizontal (gauche+droite).
+// ═══════════════════════════════════════════════════════════════════════════
+//  Grille 4×6, idx = row*4 + col.  col 0..3, row 0..5.
+//
+//  TROIS DÉMONSTRATIONS sur le même plateau :
+//
+//  ① FUSION SIMPLE (en haut, ligne 0) : deux blancs adjacents partageant 'circle'
+//    au contact → fusion immédiate dès qu'ils se touchent (ils le sont déjà :
+//    glisse-les ou observe, idx0 expose 'circle' à droite, idx1 'circle' à gauche).
+//
+//  ② AIMANT SIMPLE (ligne 2) : deux blancs 'wave' séparés par un couloir vide sur
+//    la même ligne → s'attirent seuls (mécanique signature conservée).
+//
+//  ③ AIMANT-CHAÎNE BILATÉRAL (colonne 1, le cœur de v20) : une pièce CENTRALE
+//    (idx 13, 'chevron/chevron') au milieu de la colonne 1. En haut de la colonne
+//    (idx 1… non : col1 = idx 1,5,9,13,17,21) on place une proie 'chevron' en haut
+//    (idx 5) et une en bas (idx 21), couloirs vides. La pièce centrale 'chevron'
+//    des deux faces → expose 'chevron' en haut ET en bas : les deux extrémités
+//    sont aspirées et chaînent à 3 en une fusion (résultat silver au centre).
+//    → Démonstration directe de la chaîne bilatérale, sans même tap requis.
+const DEMO_LEVEL=[
+  // ① ligne 0 (idx0,idx1) — orientés pour NE PAS matcher au contact
+  [0, 'white','circle','line',0],
+  [1, 'white','line','circle',0],
+  // ② ligne 2 (idx8,idx11) — couloir libre mais faces non alignées
+  [8, 'white','wave','line',0],
+  [11,'white','line','wave',180],
+  // ③ colonne 1 (idx5,13,21) — pièces présentes, aucune orientée pour matcher
+  [5, 'white','line','chevron',90],
+  [13,'white','chevron','wave',90],
+  [21,'white','chevron','line',180],
 ];
 
-// ─── Paramètres de complétion (Temps 2) ───
-// Cible = nombre de dominos restants pour valider un plan. PARAMÉTRABLE PAR PLAN
-// (voir note de design dans l'en-tête : la condition de victoire est un paramètre,
-//  pas une constante). Plan 0 (tête) = 1. Plan 1 (palier+leurre) = 2 (le leurre reste).
-const TARGET_BY_BOARD=[1, 2, 1, 2, 2, 3, 2, 4, 2, 3, 1];
-// ─── LA PIÈCE COMMANDÉE (kaizen 4) : objectif par pièce, prioritaire sur le compte ───
-// GOAL_BY_BOARD[N] = {state, icon} : le plan N se complète dès qu'EXISTE une pièce de
-// l'état commandé portant l'icône commandée sur l'une de ses faces — et c'est CETTE
-// pièce qui migre. Plus de fragilité du compte ni du plus-petit-index sur ces plans.
-const GOAL_BY_BOARD=[null,null,null,null,null,null,null,null,null,null,{state:'supernovae',icon:'line'}];
+// ─── Plateau unique : plus de gradation entre plans ───
+const TARGET_BY_BOARD=[0];           // 0 = pas d'objectif (bac à sable de démonstration)
+const GOAL_BY_BOARD=[null];
 function goalFor(boardIdx){ return GOAL_BY_BOARD[boardIdx]||null; }
 function targetFor(boardIdx){ return TARGET_BY_BOARD[boardIdx] != null ? TARGET_BY_BOARD[boardIdx] : 1; }
-const LANDING_IDX=10;      // case imposée où le résultat descend sur le plan suivant (col2,row2)
-
-// ─── RÉTROGRADATION À LA MIGRATION (variable, paramétrable par plan) ───
-// En traversant vers le plan d'index N, le résultat perd DEMOTE_BY_BOARD[N] crans d'état.
-// Donne du sens à la descente : franchir a un COÛT, on ne cumule pas la puissance.
-// Ex : un emerald qui descend vers le plan 2 (perte de 2) arrive en silver.
-// 0 = pas de perte ; 1 = un cran ; 2 = deux crans ; etc.
-const DEMOTE_BY_BOARD=[0, 0, 2, 1, 0, 1, 0, 2, 5, 0, 0];  // 9 et 10 : l'entrant arrive INTACT (il est la clé)
+const LANDING_IDX=10;
+const DEMOTE_BY_BOARD=[0];
 function demoteFor(boardIdx){ return DEMOTE_BY_BOARD[boardIdx] != null ? DEMOTE_BY_BOARD[boardIdx] : 0; }
 function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
-// Génère un plan "copie-variante" pour la profondeur (mêmes icônes, placement varié).
-// La case d'accueil (LANDING_IDX) est laissée libre : le résultat du plan du dessus s'y posera.
-let _gseed=20260;
-function grnd(){ _gseed=(_gseed*1103515245+12345)&0x7fffffff; return _gseed/0x7fffffff; }
-const V4_ICONS=['chevron','circle','line','wave'];
-function genLevel(){
-  const cells=[]; for(let i=0;i<TOTAL;i++){ if(i!==LANDING_IDX) cells.push(i); }
-  for(let k=cells.length-1;k>0;k--){ const j=Math.floor(grnd()*(k+1)); [cells[k],cells[j]]=[cells[j],cells[k]]; }
-  const out=[];
-  for(let n=0;n<4;n++){ const f1=V4_ICONS[Math.floor(grnd()*4)]; const f2=V4_ICONS[Math.floor(grnd()*4)];
-    out.push([cells[n],'white',f1,f2,0]); }
-  return out;
-}
-
-// ─── NIVEAUX CONÇUS À LA MAIN (HAND_LEVELS) ────────────────────────────────────
-// Format : [idx, state, face1, face2, rotation].
-// PLAN 2 — test "palier de gold + leurre" :
-//   • Deux paires de blancs (circle/circle et line/line via faces) à monter vers gold.
-//   • Un GOLD DE DÉPART (idx 6) : il ne fusionnera qu'avec un gold construit par le
-//     joueur — illustre le PALIER D'ÉTAT (les blancs ne peuvent pas l'intégrer direct).
-//   • Un LEURRE (idx 19) : tentant car partage l'icône 'circle' (la plus présente : idx5, idx9),
-//     fusionnable en un seul slide — MAIS le consommer gâche un circle nécessaire pour monter
-//     vers le gold. Illustre "QUOI fusionner" plutôt que "comment".
-//   • LANDING_IDX (10) laissé libre pour le résultat qui descend de la tête.
-const PLAN2_HAND=[
-  [5, 'white','circle','line',0],
-  [9, 'white','circle','chevron',0],   // partage 'circle' avec idx5
-  [13,'white','line','wave',0],        // partage 'line' avec idx5
-  [6, 'gold','wave','circle',0],       // GOLD de départ : palier à atteindre
-  [19,'white','circle','wave',0],      // LEURRE : 'circle' tentant, mais le gâcher casse la montée
-];
-
-// PLAN 3 — idée : "REMONTER CE QU'ON A PERDU".
-//   Le résultat du plan 2 (un emerald) descend ici RÉTROGRADÉ en silver (DEMOTE_BY_BOARD[2]=2).
-//   Petite histoire sans tutoriel : "j'avais un emerald, la traversée l'a cassé en silver,
-//   je dois le réparer". Objectif : refusionner le silver entrant pour le repromouvoir en gold.
-//   • idx 9  : SILVER partenaire (icône 'wave' commune avec le résultat probable) → permet la repromotion.
-//   • idx 14 : SILVER LEURRE (icône 'chevron', différente) → force le DISCERNEMENT : avec lequel fusionner ?
-//   • Deux blancs (idx 5, 18) : bruit de fond / matière pour réorganiser par glissement.
-//   • LANDING_IDX (10) laissé libre pour le silver qui descend.
-const PLAN3_HAND=[
-  [9, 'silver','wave','line',0],       // partenaire silver (repromotion vers gold)
-  [14,'silver','chevron','circle',0],  // LEURRE silver (icône différente)
-  [5, 'white','circle','line',0],
-  [18,'white','line','wave',0],
-];
-
-// PLAN 4 — "L'AIMANT COMME CLÉ" (vitrine de la mécanique d'attraction, signature d'ADAM).
-//   Le résultat du plan 3 (un gold) descend ici rétrogradé en SILVER (DEMOTE_BY_BOARD[3]=1),
-//   sur LANDING_IDX (10, col2 row2). Sa face exposée vers le bas est 'wave'.
-//   • idx 22 (col2, row5) : SILVER partenaire 'wave' au bout de la MÊME COLONNE que la case
-//     d'accueil. Couloir vertical → l'AIMANT doit les faire se rejoindre seuls… MAIS :
-//   • idx 14 + idx 18 (col2, row3 et row4) : deux BLANCS qui BOUCHENT le couloir. Tant qu'ils
-//     sont là, corridorEmpty() est faux → pas d'attraction. Le joueur doit d'abord DÉGAGER la
-//     colonne (slide latéral des lignes 3 et 4) pour LIBÉRER l'aimant. La résolution n'est PAS
-//     une fusion adjacente : c'est "ouvrir un couloir et laisser l'attraction faire le travail".
-//   • idx 13 (col1, row3) : LEURRE silver 'chevron' (icône différente) → discernement : ne pas
-//     gaspiller un slide à le coller au silver entrant, il ne fusionnera jamais avec 'wave'.
-//   Objectif (TARGET_BY_BOARD[3]) = 2 : le gold final + le leurre qui reste.
-const PLAN4_HAND=[
-  [22,'silver','wave','line',0],       // partenaire silver 'wave' (bas de col2)
-  [14,'white','circle','chevron',0],   // bouchon de couloir #1 (col2 row3)
-  [18,'white','line','circle',0],      // bouchon de couloir #2 (col2 row4)
-  [13,'silver','chevron','circle',0],  // LEURRE silver (icône différente, col1)
-];
-
-// ─── NOUVEAUX PLANS RÉGRESSEURS (retors) — v12 ────────────────────────────────
-// Axe : exploiter le régresseur comme OUTIL central, pas comme dépannage. Pièges
-// d'état imbriqués + multi-régresseurs. Chaque plan reçoit le résultat du précédent
-// sur LANDING_IDX (10), rétrogradé selon DEMOTE_BY_BOARD.
-
-// PLAN 5 — "LA SUR-MONTÉE" (entrant ≈ silver, DEMOTE_BY_BOARD[4]=0, il arrive intact).
-//   Idée : une pièce GOLD est montée trop haut pour pouvoir fusionner avec quoi que ce
-//   soit d'utile. DEUX régresseurs disponibles : il faut redescendre le gold de DEUX crans
-//   (gold→silver→white) pour le réapparier avec les blancs, puis monter proprement.
-//   Piège : si on consomme un régresseur sur la mauvaise pièce, on reste coincé.
-//   • idx 6  : GOLD 'wave/circle' (trop haut, à redescendre 2 crans).
-//   • idx 5  : RÉGRESSEUR 'wave/line' (descend le gold sur contact 'wave').
-//   • idx 9  : RÉGRESSEUR 'circle/wave' (2e descente, contact 'circle').
-//   • idx 13 : BLANC 'wave/line', idx 17 : BLANC 'wave/circle' (partenaires finaux).
-//   • idx 14 : LEURRE silver 'chevron' (icône différente : aucun régresseur ne doit y aller).
-//   Cible = 2 (le résultat utile + le leurre qui reste).
-const PLAN5_HAND=[
-  [6, 'gold','wave','circle',0],
-  [5, 'white','wave','line',0,true],     // RÉGRESSEUR #1
-  [9, 'white','circle','wave',0,true],   // RÉGRESSEUR #2
-  [13,'white','wave','line',0],
-  [17,'white','wave','circle',0],
-  [14,'silver','chevron','line',0],      // LEURRE (icône hors-sujet)
-];
-
-// PLAN 6 — "DESCENTE IMBRIQUÉE" (entrant ≈ gold, DEMOTE_BY_BOARD[5]=1).
-//   Un SEUL régresseur pour DEUX cibles candidates d'icône identique : le joueur doit
-//   choisir LAQUELLE redescendre, l'autre choix mène à une impasse. L'aimant complique :
-//   le régresseur peut être happé vers la mauvaise cible si on ouvre le mauvais couloir.
-//   • idx 8  : GOLD 'circle/line' (cible A).
-//   • idx 11 : GOLD 'circle/wave' (cible B, même icône de contact 'circle').
-//   • idx 16 : RÉGRESSEUR unique 'circle/chevron'.
-//   • idx 1  : SILVER 'line/circle', idx 21 : SILVER 'wave/circle' (partenaires possibles).
-//   Cible = 3.
-const PLAN6_HAND=[
-  [8, 'gold','circle','line',0],
-  [11,'gold','circle','wave',0],
-  [16,'white','circle','chevron',0,true], // RÉGRESSEUR unique (deux cibles 'circle')
-  [1, 'silver','line','circle',0],
-  [21,'silver','wave','circle',0],
-];
-
-// PLAN 7 — FINAL RETORS : "RÉGRESSEUR + AIMANT + LEURRE D'ICÔNE".
-//   Combine les trois sources de difficulté. Un emerald bloqué en haut de colonne, un
-//   régresseur à amener PAR AIMANT (couloir à ouvrir), un leurre qui partage l'icône du
-//   régresseur pour saboter l'attraction si la colonne n'est pas dégagée proprement.
-//   • idx 2  : EMERALD 'chevron/wave' (haut col2, trop haut).
-//   • idx 22 : RÉGRESSEUR 'chevron/line' (bas col2 — aimant vertical si couloir libre).
-//   • idx 10 est LANDING (silver entrant rétrogradé : DEMOTE_BY_BOARD[6]=0 → il arrive gold,
-//     mais sur ce plan on ne s'en sert pas comme clé : c'est du bruit/partenaire d'appoint).
-//   • idx 14 + idx 18 : BLANCS bouchons de couloir (col2 row3/row4).
-//   • idx 13 : LEURRE 'chevron' silver (col1) qui pourrait happer le régresseur à tort.
-//   • idx 21 : BLANC 'chevron/circle' partenaire final après descente de l'emerald.
-//   Cible = 2.
-const PLAN7_HAND=[
-  [2, 'emerald','chevron','wave',0],
-  [22,'white','chevron','line',0,true],  // RÉGRESSEUR (à amener par aimant vertical)
-  [14,'white','line','circle',0],        // bouchon couloir #1
-  [18,'white','wave','line',0],          // bouchon couloir #2
-  [13,'silver','chevron','circle',0],    // LEURRE 'chevron' (sabote l'aimant si mal géré)
-  [21,'white','chevron','circle',0],     // partenaire final
-];
-
-// ─── PLANS v18 (kaizen 1 & 2 du backlog) ──────────────────────────────────────
-
-// PLAN 8 — "L'HORLOGE" (kaizen 1 : le wrap-around comme clé).
-//   La ligne 5 est PLEINE : 4 pèlerins blancs sur 4 colonnes → tout glissement de
-//   cette ligne est une ROTATION PURE du cadran (le wrap est permanent et visible).
-//   Le SOMMET (gold, haut de col1) doit absorber les QUATRE pèlerins, un par un :
-//   chaque fusion remplace sa face basse par la face2 du pèlerin absorbé, et c'est
-//   cette nouvelle face qui dicte QUI peut monter ensuite. Un seul ordre survit :
-//     'wave'→D1 (face basse devient 'line') → D3 ('wave') → D2 ('chevron') → D4.
-//   Montée : gold→emerald→cosmic→supernovae→PLASMA. Le choix pivot est le 1er :
-//   D1 et D2 exposent tous deux 'wave', mais D2 mène à l'impasse ('circle' final
-//   sans pèlerin 'circle' restant). ET D2 EST POSÉ À L'HEURE PAR DÉFAUT (col1) :
-//   ouvrir le couloir sans phaser le cadran condamne la partie. Phaser D'ABORD.
-//   • idx1  : SOMMET gold 'circle/wave' (face basse 'wave' au départ).
-//   • idx13 : VERROU rot90 du couloir col1 (rot90 = jamais de face verticale →
-//     verrou parfait ; glisser la ligne 3 = donner l'heure de départ).
-//   • idx18 : VERROU rot90 PERMANENT col2 — bouclier : isole l'entrant (idx10,
-//     icônes imprévisibles) du cadran. Ne jamais glisser la ligne 4.
-//   • idx20..23 : le CADRAN (D1..D4). Solution : ligne5 +1 (D1 à l'heure, D4
-//     wrappe c3→c0), ligne3 +1 (ouverture), montée ; puis +2, montée ; +1 ; +2.
-//   Cible = 4 : PLASMA (idx1, migre car plus petit index) + 2 verrous + entrant.
-const PLAN8_HAND=[
-  [1, 'gold','circle','wave',0],        // LE SOMMET (gravira jusqu'à plasma)
-  [13,'white','chevron','line',90],     // VERROU col1 (l'heure de départ)
-  [18,'white','circle','chevron',90],   // VERROU col2 permanent (bouclier entrant)
-  [20,'white','wave','line',0],         // D1 — la bonne première heure
-  [21,'white','wave','chevron',0],      // D2 — LE PIÈGE, posé à l'heure par défaut
-  [22,'white','line','wave',0],         // D3
-  [23,'white','chevron','circle',0],    // D4 — la dernière heure
-];
-
-// PLAN 9 — "LE FAUX ORDRE" (kaizen 2 : l'ordre des fusions est un choix).
-//   Deux fusions disponibles, UN TAP chacune. Scène en lignes 0-1 (final à idx0
-//   < LANDING_IDX → c'est bien lui qui migre, pas l'entrant).
-//   • Fusion A (tentante) : tap A2 (+90) → contact 'chevron' avec A1 → R1 gold
-//     'wave/circle' rot90, qui expose 'wave' à DROITE… vers P (idx3, rot90,
-//     gauche='wave'), couloir tout juste vidé → L'AIMANT VOLE P INSTANTANÉMENT.
-//     P consumé à tort, Q orpheline, compte bloqué → impasse (undo).
-//   • Fusion B (la bonne, D'ABORD) : tap P (-90, rot90→0) → sa face basse 'wave'
-//     rencontre Q dessous → R2 silver 'line/circle' rot0, inerte horizontalement,
-//     hors de portée du parasite.
-//   Ensuite seulement la fusion A, puis le FINAL : R1 (rot270, droite='circle')
-//   + R2 (rot90, gauche='circle') → aimant sur la ligne 0 → EMERALD à idx0.
-//   La morale : l'icône 'circle' qui aurait empoisonné au début est la clé du final.
-//   Cible = 2 : emerald final + entrant (silver — l'ex-plasma du plan 8, déchu de
-//   5 crans à la traversée : la chute suprême ; géométriquement inerte en col2).
-const PLAN9_HAND=[
-  [0, 'silver','circle','chevron',270], // A1 — droite 'chevron' (gauche au bord)
-  [1, 'silver','wave','chevron',0],     // A2 — un tap (+90) déclenche la fusion A
-  [3, 'white','line','wave',90],        // P  — gauche 'wave' EXPOSÉE : proie du parasite
-  [7, 'white','wave','circle',0],       // Q  — partenaire vrai de P (un tap de P suffit)
-];
-
-// ─── PLANS v19 (kaizen 3 & 4 — EMBOÎTÉS : le 11 juge ce que le 10 a produit) ──
-
-// PLAN 10 — "LA DIGUE" (kaizen 3 : le muet). INVERSION DE L'HORLOGE : cette fois
-//   le défaut PROTÈGE. L'entrant du plan 9 est déterministe (emerald 'line/wave',
-//   bas 'wave', intact : DEMOTE=0) — il n'est plus du bruit, c'est un personnage.
-//   Le MUET (idx14) fait digue en col2 entre l'entrant et la proie V (idx18,
-//   silver, haut 'wave', collée sous la digue).
-//   • GOURMAND : glisser la ligne 3 (la digue part) → l'aimant dévore V →
-//     cosmic line/CHEVRON. Compte atteint (3) → LE PLAN SE COMPLÈTE QUAND MÊME.
-//     La punition est DIFFÉRÉE : ce cosmic échouera à la commande du plan 11.
-//   • JUSTE : ligne 4 de +2 D'ABORD (K↔V échangent : ordre cyclique à 2 pièces,
-//     un seul glissement), PUIS ouvrir la digue → l'aimant unit l'entrant à K →
-//     cosmic line/LINE — la pièce que l'autel attend.
-//   Cible = 3 (cosmic + muet + la pièce écartée). Jamais de blocage dur.
-const PLAN10_HAND=[
-  [14,'white',null,null,0],            // LE MUET — la digue (col2, ligne 3)
-  [18,'silver','wave','chevron',0],    // V — la proie ('wave' en haut, sous la digue)
-  [16,'white','wave','line',0],        // K — l'offrande juste ('wave' en haut, même ligne que V)
-];
-
-// PLAN 11 — "L'AUTEL" (kaizen 4 : la pièce commandée). COMMANDE = SUPERNOVAE
-//   portant 'line' (pastille en haut de l'écran). Deux chemins, un juge :
-//   • L'AUTEL X (idx2, rot90 = inerte tant qu'on ne le tape pas) : UN TAP (-90)
-//     expose 'line' vers le bas → l'aimant fait MONTER l'entrant → supernovae
-//     'circle/⟨face2 de l'entrant⟩'. Cosmic juste → circle/LINE : COMMANDE
-//     ACCOMPLIE EN UN GESTE (la récompense du plan 10 bien joué). Cosmic
-//     gourmand → circle/chevron : la commande reste affichée, l'autel est froid.
-//   • LE CHEMIN DE SECOURS (toujours ouvert, même autel consumé) : unir W (idx4,
-//     'line/line') et C (idx7, cosmic 'wave/line'). W porte 'line' sur ses DEUX
-//     faces : c'est l'ASSURANCE — quelle que soit l'orientation de leur rencontre
-//     (verticale ou horizontale, vérifié), le résultat supernovae porte 'line' et
-//     accomplit la commande. L'ordre cyclique de la ligne 1 (W, muet, C) fait que
-//     C arrive toujours à GAUCHE de W : il faut donc orienter C en rot270 (droite
-//     'line') ou passer par une jonction verticale via les colonnes.
-//   Le muet (idx5) retarde la jonction — et déplacé en col2, il MURE l'autel.
-const PLAN11_HAND=[
-  [2, 'white','circle','line',90],     // X — L'AUTEL (rot90 : ne s'éveille qu'au tap)
-  [4, 'white','line','line',0],        // W — le porteur de 'line'
-  [5, 'white',null,null,0],            // LE MUET — verrou cyclique de la ligne 1
-  [7, 'cosmic','wave','line',90],      // C — la réserve cosmique (gauche 'line')
-];
-
-const DEMOS=[ HEAD_LEVEL, PLAN2_HAND, PLAN3_HAND, PLAN4_HAND, PLAN5_HAND, PLAN6_HAND, PLAN7_HAND, PLAN8_HAND, PLAN9_HAND, PLAN10_HAND, PLAN11_HAND ];
+const DEMOS=[ DEMO_LEVEL ];
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -629,7 +431,7 @@ const FACE_ROT=[0,Math.PI/2,Math.PI,-Math.PI/2]; // conservé pour compat
 //  de ce groupe (comme en v6 : x/y dans le plan, z vers l'extérieur).
 //  RADIUS choisi pour que la face courante retombe exactement à Z=0 (cadrage identique v6) :
 //  cubeGroup reculé de RADIUS, chaque face translatée de +RADIUS vers son extérieur.
-const RADIUS = HALF / Math.tan((NBOARDS===4?Math.PI/4:Math.PI/NBOARDS)); // demi-largeur / tan(180/n)
+const RADIUS = NBOARDS<=1 ? 0 : HALF / Math.tan((NBOARDS===4?Math.PI/4:Math.PI/NBOARDS)); // 1 plan : plat, pas de cube
 cubeGroup.position.set(0,0,-RADIUS);
 const faceGroups=[];
 for(let f=0;f<NBOARDS;f++){
@@ -1072,6 +874,24 @@ function checkFusions(){
       if(fT&&fB&&fT===fB){ const r=regressPair(d[i],d[iB],i,iB); if(r){ performRegress(r.toolIdx,r.tgtIdx,'v'); return; } }
     }
   }
+  // CHAÎNE ADJACENTE À 3 (prioritaire sur la fusion simple) : un centre dont les DEUX
+  // contacts opposés matchent (L-C-R ou T-C-B) fusionne les trois d'un coup, façon prisme.
+  for(let i=0;i<TOTAL;i++){ const c=d[i]; if(!c||isRegress(c))continue; const x=colOf(i),y=rowOf(i);
+    // horizontal : gauche + droite
+    if(x>0&&x<COLS-1){ const iL=i-1, iR=i+1; const dL=d[iL], dR=d[iR];
+      if(dL&&dR&&!isRegress(dL)&&!isRegress(dR)){
+        const a=getExposedFace(dL,'right'), b=getExposedFace(c,'left'), e=getExposedFace(c,'right'), f=getExposedFace(dR,'left');
+        if(a&&b&&a===b&&e&&f&&e===f){ performChainFusion(iL,i,iR,'h'); return; }
+      }
+    }
+    // vertical : haut + bas
+    if(y>0&&y<ROWS-1){ const iT=i-COLS, iB=i+COLS; const dT=d[iT], dB=d[iB];
+      if(dT&&dB&&!isRegress(dT)&&!isRegress(dB)){
+        const a=getExposedFace(dT,'bottom'), b=getExposedFace(c,'top'), e=getExposedFace(c,'bottom'), f=getExposedFace(dB,'top');
+        if(a&&b&&a===b&&e&&f&&e===f){ performChainFusion(iT,i,iB,'v'); return; }
+      }
+    }
+  }
   // SIMPLE FUSION — désormais sur ICÔNE SEULE (l'état n'est plus une condition). Le régresseur
   // ayant été traité juste au-dessus, ces contacts d'icône donnent une fusion MONTANTE.
   for(let i=0;i<TOTAL;i++){ if(!d[i])continue; const x=colOf(i),y=rowOf(i);
@@ -1113,9 +933,46 @@ function magnetMatch(a,dirA,b,dirB){
   if(ra!==rb){ const tgt=ra?b:a; return STATE_ORDER.indexOf(tgt.state||'white')>=1; } // régresseur ↔ cible ≥ silver
   return true;                                        // deux pièces normales, même icône → montée (tout état)
 }
+// ════════════════════════════════════════════
+//  AIMANT-CHAÎNE BILATÉRAL (v20) — une pièce CENTRALE qui matche une proie à
+//  distance d'un côté ET de l'autre (couloirs vides des deux côtés) aspire les
+//  DEUX extrémités vers elle et fusionne en chaîne à 3. Vertical (haut+bas) ou
+//  horizontal (gauche+droite). Testé AVANT l'aimant simple (priorité au bilatéral).
+//  Le centre ne peut pas être régresseur ici (la chaîne est une montée).
+// ════════════════════════════════════════════
+// Cherche, pour un centre donné, la proie la plus proche d'un côté (couloir vide)
+// dont l'icône au contact coïncide avec la face que le centre expose vers ce côté.
+function nearestMatch(d,iC,dirCenter,dirProie,horizontal,forward){
+  const x=colOf(iC), y=rowOf(iC);
+  if(horizontal){
+    if(forward){ for(let c=x+1;c<COLS;c++){ const j=y*COLS+c; if(d[j]){ return (magnetMatch(d[iC],dirCenter,d[j],dirProie)&&corridorEmpty(d,iC,j,true))?j:-1; } } }
+    else       { for(let c=x-1;c>=0;c--){ const j=y*COLS+c; if(d[j]){ return (magnetMatch(d[j],dirProie,d[iC],dirCenter)&&corridorEmpty(d,j,iC,true))?j:-1; } } }
+  } else {
+    if(forward){ for(let r=y+1;r<ROWS;r++){ const j=r*COLS+x; if(d[j]){ return (magnetMatch(d[iC],dirCenter,d[j],dirProie)&&corridorEmpty(d,iC,j,false))?j:-1; } } }
+    else       { for(let r=y-1;r>=0;r--){ const j=r*COLS+x; if(d[j]){ return (magnetMatch(d[j],dirProie,d[iC],dirCenter)&&corridorEmpty(d,j,iC,false))?j:-1; } } }
+  }
+  return -1;
+}
+// Renvoie {iLo,iC,iHi,horizontal} si un centre matche des deux côtés, sinon null.
+function findChainMagnet(d){
+  for(let iC=0;iC<TOTAL;iC++){ const c=d[iC]; if(!c||isRegress(c))continue;
+    // vertical : haut + bas
+    const up=nearestMatch(d,iC,'top','bottom',false,false);
+    const dn=nearestMatch(d,iC,'bottom','top',false,true);
+    if(up!==-1&&dn!==-1) return {iLo:up,iC,iHi:dn,horizontal:false};
+    // horizontal : gauche + droite
+    const lf=nearestMatch(d,iC,'left','right',true,false);
+    const rg=nearestMatch(d,iC,'right','left',true,true);
+    if(lf!==-1&&rg!==-1) return {iLo:lf,iC,iHi:rg,horizontal:true};
+  }
+  return null;
+}
 function tryMagnet(){
   if(busy||isAnimating||swapAnim||migrating)return;
   const d=curBoard();
+  // ── PRIORITÉ : aimant-chaîne bilatéral ──
+  const ch=findChainMagnet(d);
+  if(ch){ chainMagnetMove(ch); return; }
   // lignes : pour chaque paire gauche→droite séparée d'au moins une case
   for(let y=0;y<ROWS;y++){
     for(let cL=0;cL<COLS-1;cL++){ const iL=y*COLS+cL; if(!d[iL])continue;
@@ -1152,6 +1009,89 @@ function magnetMove(i1,i2,horizontal){
   mover.mesh.position.copy(from);
   busy=true;
   swapAnim={pairs:[{mesh:mover.mesh,from,to}],t:0,after:()=>{ busy=false; setTimeout(checkFusions,60); }};
+}
+
+// Glisse les DEUX extrémités vers les cases adjacentes au centre (couloirs vides
+// garantis), puis déclenche la fusion chaîne à 3. ch={iLo,iC,iHi,horizontal}.
+function chainMagnetMove(ch){
+  const d=curBoard(); const {iC,horizontal}=ch;
+  let {iLo,iHi}=ch;                                   // iLo = côté "avant" (haut/gauche), iHi = côté "après" (bas/droite)
+  const destLo = horizontal ? iC-1 : iC-COLS;         // case adjacente au centre, côté iLo
+  const destHi = horizontal ? iC+1 : iC+COLS;         // case adjacente au centre, côté iHi
+  const pairs=[]; busy=true;
+  const moveOne=(src,dest)=>{ if(src===dest)return; const mv=d[src]; d[dest]=mv; d[src]=null;
+    const from=mv.mesh.position.clone(); placePiece(mv,0); const to=mv.mesh.position.clone();
+    mv.mesh.position.copy(from); pairs.push({mesh:mv.mesh,from,to}); };
+  moveOne(iLo,destLo); moveOne(iHi,destHi);
+  if(!pairs.length){ busy=false; setTimeout(checkFusions,40); return; }
+  swapAnim={pairs,t:0,after:()=>{ busy=false;
+    // après convergence : les trois sont alignés et adjacents → fusion chaîne
+    performChainFusion(destLo,iC,destHi,horizontal?'h':'v');
+  }};
+}
+
+// FUSION CHAÎNE À 3 (portée de doChainFusion du prisme) : les faces de contact
+// (centre↔lo et centre↔hi) s'annulent ; les faces RESTANTES des extrémités
+// forment le résultat, posé au CENTRE, état = max des trois +1. Anim move→fade→appear.
+function performChainFusion(iLo,iC,iHi,dir){
+  busy=true;
+  const d=curBoard(); const pLo=d[iLo], pC=d[iC], pHi=d[iHi];
+  if(!pLo||!pC||!pHi){ busy=false; setTimeout(checkFusions,40); return; }
+  // faces restantes des extrémités (le côté qui NE touche PAS le centre)
+  const nf1 = getRemainingFace(pLo, dir==='h'?'right':'bottom') || pLo.face2;  // face loin du centre, côté lo
+  const nf2 = getRemainingFace(pHi, dir==='h'?'left':'top')   || pHi.face2;    // face loin du centre, côté hi
+  const hiState = STATE_ORDER[Math.max(
+    STATE_ORDER.indexOf(pLo.state||'white'),
+    STATE_ORDER.indexOf(pC.state||'white'),
+    STATE_ORDER.indexOf(pHi.state||'white'))];
+  const upState = nextStateName(hiState);
+  const newRot = dir==='h'?90:0;
+  showToast('Chaîne ×3 ! → '+upState);
+  const m1=pLo.mesh, m2=pC.mesh, m3=pHi.mesh;
+  const applyResult=()=>{
+    if(pLo.mesh)removeDomino(pLo.mesh); d[iLo]=null;
+    if(pHi.mesh)removeDomino(pHi.mesh); d[iHi]=null;
+    if(dir==='h'){ pC.face1=nf2; pC.face2=nf1; pC.rotation=90; } else { pC.face1=nf1; pC.face2=nf2; pC.rotation=0; }
+    pC.state=upState; pC.state1=upState; pC.state2=upState;
+    refreshTex(pC); placePiece(pC); pC._settle=clock.getElapsedTime();
+    const ud=pC.mesh.userData; ud.faceMesh.material.opacity=1;
+    if(ud.shadow&&ud.shadow.material)ud.shadow.material.opacity=0.45;
+    pC.mesh.children.forEach(c=>{ if(Array.isArray(c.material)){ if(c.material[0])c.material[0].opacity=0.35; if(c.material[1])c.material[1].opacity=0.5; } });
+  };
+  if(!m1||!m2||!m3){ applyResult(); pC.mesh&&pC.mesh.scale.set(1,1,1); assignFaces(); updateUI(); busy=false; setTimeout(()=>{checkFusions();checkCompletion();},60); return; }
+  const p1s=m1.position.clone(), p2s=m2.position.clone(), p3s=m3.position.clone();
+  const mid=p2s.clone();
+  let elapsed=0; const durMove=220,durFade=110,durAppear=240;
+  const moveAnim=(now)=>{
+    if(!moveAnim._last)moveAnim._last=now;
+    elapsed+=now-moveAnim._last; moveAnim._last=now;
+    const p=Math.min(elapsed/durMove,1), e=easeInOutQuad(p);
+    m1.position.lerpVectors(p1s,mid,e); m3.position.lerpVectors(p3s,mid,e);
+    const sc=1-0.4*e; m1.scale.set(sc,sc,sc); m2.scale.set(sc,sc,sc); m3.scale.set(sc,sc,sc);
+    if(p<1)requestAnimationFrame(moveAnim);
+    else{ elapsed=0; moveAnim._last=null; requestAnimationFrame(fadeAnim); }
+  };
+  const fadeAnim=(now)=>{
+    if(!fadeAnim._last)fadeAnim._last=now;
+    elapsed+=now-fadeAnim._last; fadeAnim._last=now;
+    const p=Math.min(elapsed/durFade,1);
+    [m1,m2,m3].forEach(m=>m.traverse(c=>{ if(c.material&&'opacity'in c.material)c.material.opacity=(1-p); }));
+    if(p<1)requestAnimationFrame(fadeAnim);
+    else{
+      applyResult();
+      pC.mesh.scale.set(0.3,0.3,0.3); elapsed=0; fadeAnim._last=null;
+      const appearAnim=(now2)=>{
+        if(!appearAnim._last)appearAnim._last=now2;
+        elapsed+=now2-appearAnim._last; appearAnim._last=now2;
+        const p2v=Math.min(elapsed/durAppear,1), e2=easeOutCubic(p2v);
+        const sc2=0.3+0.7*e2; pC.mesh.scale.set(sc2,sc2,sc2);
+        if(p2v<1)requestAnimationFrame(appearAnim);
+        else{ pC.mesh.scale.set(1,1,1); assignFaces(); updateUI(); busy=false; setTimeout(()=>{checkFusions();checkCompletion();},50); }
+      };
+      requestAnimationFrame(appearAnim);
+    }
+  };
+  requestAnimationFrame(moveAnim);
 }
 
 function nextStateName(st){ const i=STATE_ORDER.indexOf(st||'white'); return i<STATE_ORDER.length-1?STATE_ORDER[i+1]:STATE_ORDER[i]; }
@@ -1317,22 +1257,9 @@ function performFusion(i1,i2,dir){
 let migrating=false;
 function countPieces(arr){ let n=0; for(const p of arr) if(p) n++; return n; }
 function checkCompletion(){
-  if(busy||isAnimating||swapAnim||migrating)return;
-  const head=curBoard();
-  // LA PIÈCE COMMANDÉE : prioritaire. Dès qu'une pièce de l'état commandé porte
-  // l'icône commandée, ELLE migre (peu importe le compte et l'index des restes).
-  const goal=goalFor(mod(currentBoard));
-  if(goal){
-    for(let i=0;i<TOTAL;i++){ const p=head[i];
-      if(p&&!p.regress&&(p.face1||p.face2)&&p.state===goal.state&&(p.face1===goal.icon||p.face2===goal.icon)){ migrateDown(p); return; } }
-    return;
-  }
-  if(countPieces(head)!==targetFor(currentBoard))return;
-  // récupérer la pièce-résultat à faire migrer (la première restante)
-  let result=null;
-  for(let i=0;i<TOTAL;i++){ if(head[i]){ result=head[i]; break; } }
-  if(!result)return;
-  migrateDown(result);
+  // v20 : PLATEAU UNIQUE — plus de gradation ni de migration entre plans.
+  // (Conservé débranché : la complétion/objectif reviendra par config sur de futurs niveaux.)
+  return;
 }
 
 function migrateDown(result){
