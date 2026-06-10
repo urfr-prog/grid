@@ -241,7 +241,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const COLS=4, ROWS=6, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=1;
+const COLS=5, ROWS=9, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=1;
 
 const STATE_ORDER=['white','silver','gold','emerald','cosmic','supernovae','plasma'];
 const MOVE_DIRS={ white:null, silver:[[1,0],[-1,0]], gold:[[1,1],[1,-1],[-1,1],[-1,-1]],
@@ -270,7 +270,7 @@ function renderIcoSVG(name,f2){
 }
 // Palette de texture (STC) portée du prisme + plasma (état max de la stack, absent du prisme).
 const STC={
- white:{border:'rgba(180,180,190,0.35)',icon:'rgba(180,180,190,0.35)',pt:'rgba(180,180,190,0.35)',sep:'rgba(180,180,190,0.3)',flt:'',bw:1},
+ white:{border:'rgba(210,210,220,0.7)',icon:'rgba(210,210,220,0.7)',pt:'rgba(210,210,220,0.7)',sep:'rgba(210,210,220,0.55)',flt:'',bw:1},
  silver:{border:'rgba(6,182,212,0.6)',icon:'#22d3ee',pt:'#22d3ee',sep:'rgba(34,211,238,0.4)',flt:'drop-shadow(0 0 2px rgba(34,211,238,0.4))',bw:1},
  gold:{border:'rgba(255,215,0,0.7)',icon:'#ffd700',pt:'#ffd700',sep:'rgba(255,215,0,0.4)',flt:'drop-shadow(0 0 4px rgba(255,215,0,0.6))',bw:1},
  emerald:{border:'rgba(52,211,153,0.9)',icon:'#34d399',pt:'#34d399',sep:'rgba(52,211,153,0.6)',flt:'drop-shadow(0 0 6px rgba(52,211,153,0.9))',bw:1},
@@ -279,7 +279,7 @@ const STC={
  plasma:{border:'rgba(255,32,96,0.75)',icon:'#ff2060',pt:'#ff2060',sep:'rgba(255,32,96,0.5)',flt:'drop-shadow(0 0 7px rgba(255,32,96,0.8))',bw:3}
 };
 const _texCache={};
-let showMedians=true;
+let showMedians=false;
 function getDominoTex(f1,f2,rot,state,regress){
  const k=f1+'|'+f2+'|'+rot+'|'+state+'|'+(regress?'R':'')+'|'+(showMedians?'M':''); if(_texCache[k])return _texCache[k];
  const c=STC[state]||STC.white, r=((rot||0)%360+360)%360;
@@ -304,7 +304,7 @@ function getDominoTex(f1,f2,rot,state,regress){
  const img=new Image();
  img.onload=()=>{
   const m=4,rd=36;
-  ctx.fillStyle='rgba(18,19,26,0.95)';
+  ctx.fillStyle='rgba(0,0,0,0.95)';
   ctx.beginPath();ctx.moveTo(m+rd,m);ctx.lineTo(S-m-rd,m);ctx.quadraticCurveTo(S-m,m,S-m,m+rd);ctx.lineTo(S-m,S-m-rd);ctx.quadraticCurveTo(S-m,S-m,S-m-rd,S-m);ctx.lineTo(m+rd,S-m);ctx.quadraticCurveTo(m,S-m,m,S-m-rd);ctx.lineTo(m,m+rd);ctx.quadraticCurveTo(m,m,m+rd,m);ctx.closePath();ctx.fill();
   ctx.drawImage(img,m+2,m+2,S-m*2-4,S-m*2-4);
   tex.needsUpdate=true;URL.revokeObjectURL(url);
@@ -334,16 +334,21 @@ function drawSupernovaeRing(cv,angle){
  ctx.strokeStyle=grad;ctx.lineWidth=lw;
  ctx.beginPath();ctx.moveTo(m+rd,m);ctx.lineTo(S-m-rd,m);ctx.quadraticCurveTo(S-m,m,S-m,m+rd);ctx.lineTo(S-m,S-m-rd);ctx.quadraticCurveTo(S-m,S-m,S-m-rd,S-m);ctx.lineTo(m+rd,S-m);ctx.quadraticCurveTo(m,S-m,m,S-m-rd);ctx.lineTo(m,m+rd);ctx.quadraticCurveTo(m,m,m+rd,m);ctx.closePath();ctx.stroke();
 }
-function drawHalo(cv,r,g,b,phase,intensity){
+function drawHalo(cv,r,g,b,phase,intensity,r2,g2,b2){
+ // Halo multicouche inspiré du box-shadow empilé du proto HTML :
+ // teinte CLAIRE (r,g,b) au cœur + teinte PROFONDE (r2,g2,b2) en périphérie.
+ // Si la 2e teinte est absente, on réutilise la 1re (halo monochrome).
+ if(r2===undefined){r2=r;g2=g;b2=b;}
  const S=cv.width,cx=S/2,ctx=cv.getContext('2d');
  ctx.clearRect(0,0,S,S);
  const pulse=0.5+0.5*Math.sin(phase);
- const a=intensity*(0.6+pulse*0.4);
- const grd=ctx.createRadialGradient(cx,cx,S*0.15,cx,cx,cx);
- grd.addColorStop(0,`rgba(${r},${g},${b},${(a*0.6).toFixed(2)})`);
- grd.addColorStop(0.4,`rgba(${r},${g},${b},${(a*0.3).toFixed(2)})`);
- grd.addColorStop(0.7,`rgba(${r},${g},${b},${(a*0.1).toFixed(2)})`);
- grd.addColorStop(1,`rgba(${r},${g},${b},0)`);
+ const a=intensity*(0.55+pulse*0.45);                       // pulsation plus marquée
+ const grd=ctx.createRadialGradient(cx,cx,S*0.04,cx,cx,cx);
+ grd.addColorStop(0,   `rgba(${r},${g},${b},${(a*0.55).toFixed(2)})`);   // cœur clair
+ grd.addColorStop(0.22,`rgba(${r},${g},${b},${(a*0.32).toFixed(2)})`);
+ grd.addColorStop(0.45,`rgba(${r2},${g2},${b2},${(a*0.20).toFixed(2)})`);// bascule vers teinte profonde
+ grd.addColorStop(0.7, `rgba(${r2},${g2},${b2},${(a*0.08).toFixed(2)})`);
+ grd.addColorStop(1,   `rgba(${r2},${g2},${b2},0)`);
  ctx.fillStyle=grd;ctx.fillRect(0,0,S,S);
 }
 
@@ -388,15 +393,16 @@ function drawHalo(cv,r,g,b,phase,intensity){
 //    sont aspirées et chaînent à 3 en une fusion (résultat silver au centre).
 //    → Démonstration directe de la chaîne bilatérale, sans même tap requis.
 const DEMO_LEVEL=[
+  // Grille 5×9 (col=idx%5, row=floor(idx/5)). LANDING_IDX=10 (col0,row2) laissé libre.
   // ① ligne 0 (idx0,idx1) — orientés pour NE PAS matcher au contact
   [0, 'white','circle','line',0],
   [1, 'white','line','circle',0],
-  // ② ligne 2 (idx8,idx11) — couloir libre mais faces non alignées
-  [8, 'white','wave','line',0],
-  [11,'white','line','wave',180],
-  // ③ colonne 1 (idx5,13,21) — pièces présentes, aucune orientée pour matcher
-  [5, 'white','line','chevron',90],
-  [13,'white','chevron','wave',90],
+  // ② ligne 1 (idx6,idx9) — couloir libre mais faces non alignées
+  [6, 'white','wave','line',0],
+  [9, 'white','line','wave',180],
+  // ③ colonne 1 (idx11,16,21) — pièces présentes, aucune orientée pour matcher
+  [11,'white','line','chevron',90],
+  [16,'white','chevron','wave',90],
   [21,'white','chevron','line',180],
 ];
 
@@ -448,11 +454,7 @@ function addDomino(mesh,f){ faceGroups[f].add(mesh); }
 function removeDomino(mesh){ if(mesh&&mesh.parent) mesh.parent.remove(mesh); }
 
 function makeGridTex(){ const S=512, cv=document.createElement('canvas'); cv.width=Math.round(S*COLS/ROWS); cv.height=S;
-  const ctx=cv.getContext('2d'); const cW=cv.width/COLS, cH=cv.height/ROWS;
-  ctx.strokeStyle='rgba(34,211,238,0.08)'; ctx.lineWidth=1;
-  for(let c=0;c<=COLS;c++){ctx.beginPath();ctx.moveTo(c*cW,0);ctx.lineTo(c*cW,cv.height);ctx.stroke();}
-  for(let r=0;r<=ROWS;r++){ctx.beginPath();ctx.moveTo(0,r*cH);ctx.lineTo(cv.width,r*cH);ctx.stroke();}
-  for(let r=0;r<ROWS;r++)for(let cc=0;cc<COLS;cc++){ ctx.fillStyle=((r+cc)%2===0)?'rgba(34,211,238,0.015)':'rgba(34,211,238,0.03)'; ctx.fillRect(cc*cW,r*cH,cW,cH); }
+  // Quadrillage supprimé : plan de jeu en noir profond, sans lignes ni damier.
   return new THREE.CanvasTexture(cv);
 }
 const gridTex=makeGridTex(); const gridMeshes=[];
@@ -476,7 +478,14 @@ function createDominoMesh(face1,face2,state,regress,rotation){ const grp=new THR
   grp.add(new THREE.Mesh(bodyGeo,[new THREE.MeshBasicMaterial({color:0x0a0e14,transparent:true,opacity:0.35}),new THREE.MeshBasicMaterial({color:0x10141a,transparent:true,opacity:0.5})]));
   // régresseur = icônes grises épaisses (cf getDominoTex) ; contour/glow identiques aux autres
   const edgeCol = 0x22d3ee;
-  const edge=new THREE.LineSegments(new THREE.EdgesGeometry(bodyGeo,15),new THREE.LineBasicMaterial({color:edgeCol,transparent:true,opacity:0.18})); grp.add(edge);
+  // ── LISERÉ PLEIN (vraie épaisseur, indépendant du lineWidth WebGL) ──
+  // Cadre arrondi = forme extérieure SZ avec un trou intérieur (SZ - 2*EDGE_W).
+  // L'écart EDGE_W est l'épaisseur réelle du liseré, réglable au pixel près.
+  const EDGE_W = 0.022;                                    // épaisseur du liseré (~2px à l'écran)
+  const frameShape = rrShape(SZ, SZ, RR);
+  frameShape.holes.push(rrShape(SZ-2*EDGE_W, SZ-2*EDGE_W, Math.max(0.01,RR-EDGE_W)));
+  const edge=new THREE.Mesh(new THREE.ShapeGeometry(frameShape),new THREE.MeshBasicMaterial({color:edgeCol,transparent:true,opacity:0.18,side:THREE.DoubleSide,depthWrite:false}));
+  edge.position.z=SAT_DEPTH/2+0.002; grp.add(edge);
   const glow=new THREE.Mesh(new THREE.ShapeGeometry(rrShape(SZ+0.12,SZ+0.12,RR+0.04)),new THREE.MeshBasicMaterial({color:edgeCol,transparent:true,opacity:0})); glow.position.z=-SAT_DEPTH/2-0.01; grp.add(glow);
   // ── ÉTATS RICHES (structure portée de mkSat / prisme) ──
   // ombre portée douce (radiale) derrière la pièce
@@ -489,9 +498,9 @@ function createDominoMesh(face1,face2,state,regress,rotation){ const grp=new THR
   const ringTex=new THREE.CanvasTexture(ringCv);
   const ringMesh=new THREE.Mesh(new THREE.PlaneGeometry(SZ,SZ),new THREE.MeshBasicMaterial({map:ringTex,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide})); ringMesh.position.z=SAT_DEPTH/2+0.003; grp.add(ringMesh);
   // halo large pulsant (sprite)
-  const haloCv=document.createElement('canvas'); haloCv.width=128; haloCv.height=128;
+  const haloCv=document.createElement('canvas'); haloCv.width=256; haloCv.height=256;
   const haloTex=new THREE.CanvasTexture(haloCv);
-  const haloSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:haloTex,transparent:true,opacity:0,depthWrite:false})); haloSprite.scale.set(SZ*1.6,SZ*1.6,1); grp.add(haloSprite);
+  const haloSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:haloTex,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); haloSprite.scale.set(SZ*2.8,SZ*2.8,1); grp.add(haloSprite);
   // userData mappé aux noms du prisme (edgeLines/glowMesh) pour une boucle animate identique.
   grp.userData={faceMesh,edge,glow,edgeLines:edge,glowMesh:glow,shadow,ringCanvas:ringCv,ringTex,ringMesh,haloCanvas:haloCv,haloTex,haloSprite,isDomino:true,regress:!!regress}; return grp;
 }
@@ -834,6 +843,7 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){ doUndo(); e.preventDefault(); return; }
   if(e.key==='ArrowRight'){navRight();e.preventDefault();} else if(e.key==='ArrowLeft'){navLeft();e.preventDefault();} });
 document.getElementById('undoBtn').addEventListener('click',doUndo);
+document.getElementById('medBtn').classList.toggle('off',!showMedians);  // état initial cohérent (off par défaut)
 document.getElementById('medBtn').addEventListener('click',function(){
   showMedians=!showMedians;
   this.classList.toggle('off',!showMedians);
@@ -1293,9 +1303,12 @@ function fitCamera(){
   const w=window.innerWidth, h=window.innerHeight, aspect=w/h;
   renderer.setSize(w,h); camera.aspect=aspect;
   const vFOV=camera.fov*Math.PI/180;
-  const marginW=1.08;                                       // marge latérale serrée → remplit les côtés
-  const needW=(FACE_W*marginW)/(2*Math.tan(vFOV/2)*aspect); // distance pour que la largeur remplisse l'écran
-  const needH=(FACE_H*1.02)/(2*Math.tan(vFOV/2));           // garde-fou : ne pas couper en hauteur
+  // Comme prisme V11 : la grille occupe le maximum de largeur en ne laissant qu'un petit
+  // interstice de chaque côté (~10px). On cadre en PRIORITÉ sur la largeur.
+  const sidePx=10;                                         // interstice latéral souhaité
+  const marginW=(w+2*sidePx)/w;                            // largeur cible = écran - 2*interstice
+  const needW=(FACE_W*marginW)/(2*Math.tan(vFOV/2)*aspect);// distance pour remplir la largeur
+  const needH=(FACE_H*1.0)/(2*Math.tan(vFOV/2));           // garde-fou hauteur (ne pas couper)
   camera.position.z=Math.max(needW,needH);
   camera.position.set(0,0,camera.position.z); camera.lookAt(0,0,0);
   camera.updateProjectionMatrix();
@@ -1324,34 +1337,34 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     const st=p.state||'white';
     if(st==='cosmic'){
       drawCosmicRing(ud.ringCanvas,t*Math.PI/2);ud.ringTex.needsUpdate=true;ud.ringMesh.material.opacity=1;
-      drawHalo(ud.haloCanvas,131,56,236,t*Math.PI,0.5);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.8;
+      drawHalo(ud.haloCanvas,196,181,253,t*Math.PI,0.5,255,0,110);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.8;
       const cp=t*1.5+si;ud.edgeLines.material.color.setRGB(0.5+Math.sin(cp)*0.3,Math.sin(cp+2.1)*0.3+0.2,0.5+Math.sin(cp+4.2)*0.3);ud.edgeLines.material.opacity=0.5+Math.sin(t*2)*0.15;
       ud.glowMesh.material.color.set(0x8338ec);ud.glowMesh.material.opacity=0.2+0.12*Math.sin(t*2+si);
     } else if(st==='supernovae'||st==='plasma'){
       // supernovae du prisme ; plasma (état max stack) = même rendu, légèrement plus rapide/intense
       drawSupernovaeRing(ud.ringCanvas,t*Math.PI*(st==='plasma'?1:2/3));ud.ringTex.needsUpdate=true;ud.ringMesh.material.opacity=1;
       const hr=255,hg=st==='plasma'?32:140,hb=st==='plasma'?96:0;
-      drawHalo(ud.haloCanvas,hr,hg,hb,t*Math.PI*1.25,st==='plasma'?0.75:0.6);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.9;
+      drawHalo(ud.haloCanvas,255,235,59,t*Math.PI*1.25,st==='plasma'?0.75:0.6,hr,hg,hb);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.9;
       ud.edgeLines.material.color.setRGB(1,0.4+Math.sin(t*2+si)*0.3,Math.sin(t*1.5)*0.15);ud.edgeLines.material.opacity=0.5+Math.sin(t*2.5)*0.12;
       ud.glowMesh.material.color.set(st==='plasma'?0xff2060:0xff8c00);ud.glowMesh.material.opacity=0.3+0.2*Math.sin(t*2.5+si);
     } else if(st==='emerald'){
       ud.ringMesh.material.opacity=0;
-      drawHalo(ud.haloCanvas,52,211,153,t*Math.PI*0.8,0.35);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.7;
+      drawHalo(ud.haloCanvas,52,211,153,t*Math.PI*0.8,0.35,5,150,105);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.7;
       ud.edgeLines.material.color.set(0x34d399);ud.edgeLines.material.opacity=0.3+0.1*Math.sin(t*1.5+si);
       ud.glowMesh.material.color.set(0x34d399);ud.glowMesh.material.opacity=0.15+0.1*Math.sin(t*1.5+si);
     } else if(st==='gold'){
       ud.ringMesh.material.opacity=0;
-      drawHalo(ud.haloCanvas,255,215,0,t*Math.PI*0.6,0.25);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.5;
+      drawHalo(ud.haloCanvas,255,235,120,t*Math.PI*0.6,0.25,255,170,0);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.5;
       ud.edgeLines.material.color.set(0xffd700);ud.edgeLines.material.opacity=0.25+0.08*Math.sin(t*1.2+si);
       ud.glowMesh.material.color.set(0xffd700);ud.glowMesh.material.opacity=0.08+0.05*Math.sin(t*1.2+si);
     } else if(st==='silver'){
       ud.ringMesh.material.opacity=0;
-      drawHalo(ud.haloCanvas,6,182,212,t*Math.PI*0.5,0.2);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.4;
+      drawHalo(ud.haloCanvas,34,211,238,t*Math.PI*0.5,0.2,6,120,160);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.4;
       ud.edgeLines.material.color.set(0x22d3ee);ud.edgeLines.material.opacity=0.2+0.06*Math.sin(t+si);
       ud.glowMesh.material.color.set(0x06b6d4);ud.glowMesh.material.opacity=0.05+0.03*Math.sin(t+si);
     } else {
       ud.glowMesh.material.opacity=0;ud.ringMesh.material.opacity=0;ud.haloSprite.material.opacity=0;
-      ud.edgeLines.material.color.set(0xb4b4be);ud.edgeLines.material.opacity=0.12;
+      ud.edgeLines.material.color.set(0xd2d2dc);ud.edgeLines.material.opacity=0.4;
     }
     ud.faceMesh.material.opacity = 1;
   }));
