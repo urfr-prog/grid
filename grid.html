@@ -100,6 +100,20 @@
      lieu de casser. Rare, placée tard dans la pile : après les épreuves, le don.
 
   ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v28 : TWIN ABSORPTION — fusion en MIROIR par les CÔTÉS COURTS du domino (arêtes
+        perpendiculaires à sa longueur). Deux dominos visuellement identiques (signature
+        [top,right,bottom,left] via getExposedFace, qui intègre la rotation), avec couloir vide,
+        s'absorbent selon l'orientation : PORTRAIT (rot 0/180) → twin sur même RANGÉE ;
+        HORIZONTAL (rot 90/270) → twin sur même COLONNE. Sur l'axe LONG, les dominos
+        "se font face" par leurs grandes faces et relèvent de la fusion classique, jamais
+        du twin. Mécanique d'ABSORPTION (pas de montée d'état) : le plus fort en état reste
+        à sa position, l'autre disparaît (glide vers gagnant + fade, gagnant pulse).
+        Ex-aequo d'état → _settle (lastMoved, déjà maintenu par placePiece/rotation) le plus
+        récent gagne. Exclut régresseurs et Muets. Priorité dans checkFusions : APRÈS régresseur,
+        AVANT chaîne/simple/aimant. Change le jeu : sur l'axe court, le miroir n'est plus une
+        montée mais une consolidation — le joueur peut casser le miroir par tap-rotation
+        s'il veut au contraire conserver les deux pièces pour une fusion classique.
+  v27 : liseré 0.055→0.033 (3 px) ; blanc opacité 0.7→0.5.
   v19 : LE MUET + LA PIÈCE COMMANDÉE (kaizen 3 et 4), NBOARDS 9→11. La grande
         nouveauté : LES PLANS 10 ET 11 SONT EMBOÎTÉS — la chaîne devient stratégie.
         • PLAN 10 "LA DIGUE" : l'entrant du plan 9 est DÉTERMINISTE (emerald
@@ -270,7 +284,7 @@ function renderIcoSVG(name,f2){
 }
 // Palette de texture (STC) portée du prisme + plasma (état max de la stack, absent du prisme).
 const STC={
- white:{border:'rgba(210,210,220,0.7)',icon:'rgba(210,210,220,0.7)',pt:'rgba(210,210,220,0.7)',sep:'rgba(210,210,220,0.55)',flt:'',bw:1},
+ white:{border:'rgba(210,210,220,0.5)',icon:'rgba(210,210,220,0.5)',pt:'rgba(210,210,220,0.5)',sep:'rgba(210,210,220,0.4)',flt:'',bw:1},
  silver:{border:'rgba(6,182,212,0.6)',icon:'#22d3ee',pt:'#22d3ee',sep:'rgba(34,211,238,0.4)',flt:'drop-shadow(0 0 2px rgba(34,211,238,0.4))',bw:1},
  gold:{border:'rgba(255,215,0,0.7)',icon:'#ffd700',pt:'#ffd700',sep:'rgba(255,215,0,0.4)',flt:'drop-shadow(0 0 4px rgba(255,215,0,0.6))',bw:1},
  emerald:{border:'rgba(52,211,153,0.9)',icon:'#34d399',pt:'#34d399',sep:'rgba(52,211,153,0.6)',flt:'drop-shadow(0 0 6px rgba(52,211,153,0.9))',bw:1},
@@ -481,7 +495,7 @@ function createDominoMesh(face1,face2,state,regress,rotation){ const grp=new THR
   // ── LISERÉ PLEIN (vraie épaisseur, indépendant du lineWidth WebGL) ──
   // Cadre arrondi = forme extérieure SZ avec un trou intérieur (SZ - 2*EDGE_W).
   // L'écart EDGE_W est l'épaisseur réelle du liseré, réglable au pixel près.
-  const EDGE_W = 0.022;                                    // épaisseur du liseré (~2px à l'écran)
+  const EDGE_W = 0.033;                                    // épaisseur du liseré (unités monde) ≈ 3 pixels
   const frameShape = rrShape(SZ, SZ, RR);
   frameShape.holes.push(rrShape(SZ-2*EDGE_W, SZ-2*EDGE_W, Math.max(0.01,RR-EDGE_W)));
   const edge=new THREE.Mesh(new THREE.ShapeGeometry(frameShape),new THREE.MeshBasicMaterial({color:edgeCol,transparent:true,opacity:0.18,side:THREE.DoubleSide,depthWrite:false}));
@@ -884,6 +898,13 @@ function checkFusions(){
       if(fT&&fB&&fT===fB){ const r=regressPair(d[i],d[iB],i,iB); if(r){ performRegress(r.toolIdx,r.tgtIdx,'v'); return; } }
     }
   }
+  // TWIN ABSORPTION (v28) — deux dominos en MIROIR PARFAIT (face1==face1 ET face2==face2 ET
+  // même rotation), alignés sur même LIGNE ou même COLONNE, couloir vide entre eux : absorption.
+  // Le plus fort en état reste à sa position, l'autre disparaît (glide vers gagnant + fade).
+  // Pas de montée d'état. Ex-aequo d'état → _settle (lastMoved) le plus récent gagne.
+  // Exclut régresseurs et Muets. Priorité APRÈS régresseur, AVANT chaîne/fusion simple/aimant.
+  { const tp = findTwinPair(d);
+    if(tp){ performTwinAbsorb(tp.i1, tp.i2); return; } }
   // CHAÎNE ADJACENTE À 3 (prioritaire sur la fusion simple) : un centre dont les DEUX
   // contacts opposés matchent (L-C-R ou T-C-B) fusionne les trois d'un coup, façon prisme.
   for(let i=0;i<TOTAL;i++){ const c=d[i]; if(!c||isRegress(c))continue; const x=colOf(i),y=rowOf(i);
@@ -1182,6 +1203,106 @@ function performRegress(toolIdx,tgtIdx,dir){
   requestAnimationFrame(moveAnim);
 }
 
+// ════════════════════════════════════════════
+//  TWIN ABSORPTION (v28) — fonctions
+// ════════════════════════════════════════════
+function isMute(p){ return !!p && !p.face1 && !p.face2; }
+// Twin = MIROIR VISUEL. On compare la signature visuelle [top,right,bottom,left] après
+// rotation (getExposedFace gère 0/90/180/270). Ainsi (circle/line, rot=0) et
+// (line/circle, rot=180) sont reconnus comme identiques visuellement (O en haut, — en bas).
+function twinIcons(a,b){
+  if(!a||!b) return false;
+  if(isRegress(a)||isRegress(b)) return false;
+  if(isMute(a)||isMute(b))       return false;
+  const sa = ['top','right','bottom','left'].map(d=>getExposedFace(a,d));
+  const sb = ['top','right','bottom','left'].map(d=>getExposedFace(b,d));
+  return sa[0]===sb[0] && sa[1]===sb[1] && sa[2]===sb[2] && sa[3]===sb[3];
+}
+// Trouve une paire twin alignée PERPENDICULAIREMENT à la longueur du domino, couloir vide.
+// Le "côté" d'un domino = arêtes COURTES (perpendiculaires à sa longueur).
+//   • Portrait (rot 0/180) → longueur verticale, côtés = gauche/droite → twin sur MÊME RANGÉE
+//   • Horizontal (rot 90/270) → longueur horizontale, côtés = haut/bas → twin sur MÊME COLONNE
+// Deux dominos sur l'axe LONG (portrait/même colonne, ou horizontal/même rangée) "se font face"
+// par leurs grandes faces et relèvent de la fusion classique, jamais du twin.
+// twinIcons (signature visuelle) garantit que B a la même orientation que A : on n'a donc
+// qu'à examiner rotA pour décider du sens de scan.
+function findTwinPair(d){
+  for(let i=0;i<TOTAL;i++){ const a=d[i]; if(!a)continue;
+    const ax=colOf(i), ay=rowOf(i);
+    const rotA = ((a.rotation||0)%360+360)%360;
+    const portraitA = (rotA===0 || rotA===180);
+    if(portraitA){
+      // côtés gauche/droite → scan même rangée vers la droite
+      for(let cx=ax+1; cx<COLS; cx++){ const j=ay*COLS+cx; const b=d[j];
+        if(b){ if(twinIcons(a,b)) return {i1:i,i2:j}; break; }
+      }
+    } else {
+      // côtés haut/bas → scan même colonne vers le bas
+      for(let cy=ay+1; cy<ROWS; cy++){ const j=cy*COLS+ax; const b=d[j];
+        if(b){ if(twinIcons(a,b)) return {i1:i,i2:j}; break; }
+      }
+    }
+  }
+  return null;
+}
+function performTwinAbsorb(i1,i2){
+  busy=true;
+  const d=curBoard();
+  const p1=d[i1], p2=d[i2];
+  const hi1=STATE_ORDER.indexOf(p1.state||'white');
+  const hi2=STATE_ORDER.indexOf(p2.state||'white');
+  // Gagnant : état le plus fort ; ex-aequo → _settle (lastMoved) le plus récent
+  let wIdx, lIdx;
+  if(hi1>hi2)       { wIdx=i1; lIdx=i2; }
+  else if(hi2>hi1)  { wIdx=i2; lIdx=i1; }
+  else { const t1=p1._settle||0, t2=p2._settle||0;
+         if(t1>=t2){ wIdx=i1; lIdx=i2; } else { wIdx=i2; lIdx=i1; } }
+  const winner=d[wIdx], loser=d[lIdx];
+  showToast('Twin ! → '+(winner.state||'white'));
+  const ml=loser.mesh, mw=winner.mesh;
+  if(!ml||!mw){
+    if(loser.mesh)removeDomino(loser.mesh); d[lIdx]=null;
+    setTimeout(()=>{ assignFaces(); updateUI(); busy=false; checkFusions(); checkCompletion(); },60);
+    return;
+  }
+  // Animation : perdant glisse vers gagnant (scale down + fade) puis disparaît ;
+  // gagnant pulse légèrement à l'arrivée pour signaler l'absorption.
+  const lStart=ml.position.clone(), wPos=mw.position.clone();
+  let elapsed=0; const durMove=240, durFade=140, durPulse=200;
+  const moveAnim=(now)=>{
+    if(!moveAnim._last)moveAnim._last=now;
+    elapsed+=now-moveAnim._last; moveAnim._last=now;
+    const p=Math.min(elapsed/durMove,1), e=easeInOutQuad(p);
+    ml.position.lerpVectors(lStart,wPos,e);
+    const sc=1-0.45*e; ml.scale.set(sc,sc,sc);
+    if(p<1)requestAnimationFrame(moveAnim);
+    else{ elapsed=0; moveAnim._last=null; requestAnimationFrame(fadeAnim); }
+  };
+  const fadeAnim=(now)=>{
+    if(!fadeAnim._last)fadeAnim._last=now;
+    elapsed+=now-fadeAnim._last; fadeAnim._last=now;
+    const p=Math.min(elapsed/durFade,1);
+    ml.traverse(c=>{ if(c.material&&'opacity'in c.material)c.material.opacity=(1-p); });
+    if(p<1)requestAnimationFrame(fadeAnim);
+    else{
+      removeDomino(loser.mesh); d[lIdx]=null;
+      let pe=0; fadeAnim._last=null;
+      const pulseAnim=(now2)=>{
+        if(!pulseAnim._last)pulseAnim._last=now2;
+        pe+=now2-pulseAnim._last; pulseAnim._last=now2;
+        const pp=Math.min(pe/durPulse,1);
+        const k=Math.sin(pp*Math.PI);                 // 0 → 1 → 0
+        const sc2=1+0.14*k; mw.scale.set(sc2,sc2,sc2);
+        if(pp<1)requestAnimationFrame(pulseAnim);
+        else{ mw.scale.set(1,1,1); winner._settle=clock.getElapsedTime();
+              assignFaces(); updateUI(); busy=false; checkFusions(); checkCompletion(); }
+      };
+      requestAnimationFrame(pulseAnim);
+    }
+  };
+  requestAnimationFrame(moveAnim);
+}
+
 // Fusion simple V4 : les deux faces qui se touchent disparaissent, les faces partenaires
 // montent d'un état et forment le domino résultat, posé sur la case de d1.
 // easings portés du prisme (utilisés par l'animation de fusion)
@@ -1364,7 +1485,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
       ud.glowMesh.material.color.set(0x06b6d4);ud.glowMesh.material.opacity=0.05+0.03*Math.sin(t+si);
     } else {
       ud.glowMesh.material.opacity=0;ud.ringMesh.material.opacity=0;ud.haloSprite.material.opacity=0;
-      ud.edgeLines.material.color.set(0xd2d2dc);ud.edgeLines.material.opacity=0.4;
+      ud.edgeLines.material.color.set(0xd2d2dc);ud.edgeLines.material.opacity=0.5;
     }
     ud.faceMesh.material.opacity = 1;
   }));
@@ -1375,6 +1496,8 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   renderer.render(scene,camera);
 }
 buildBoards(); assignFaces(); updateUI(); animate();
+// v28 : check au démarrage pour détecter les twins déjà présents dans le board initial
+setTimeout(checkFusions, 300);
 </script>
 </body>
 </html>
