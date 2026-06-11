@@ -113,6 +113,7 @@
         AVANT chaîne/simple/aimant. Change le jeu : sur l'axe court, le miroir n'est plus une
         montée mais une consolidation — le joueur peut casser le miroir par tap-rotation
         s'il veut au contraire conserver les deux pièces pour une fusion classique.
+  v29 : halos clignotants supprimés (lisibilité dominos) ; liserés uniformisés (couleur par état, opacité 0.5 fixe, plus de pulsation sin).
   v27 : liseré 0.055→0.033 (3 px) ; blanc opacité 0.7→0.5.
   v19 : LE MUET + LA PIÈCE COMMANDÉE (kaizen 3 et 4), NBOARDS 9→11. La grande
         nouveauté : LES PLANS 10 ET 11 SONT EMBOÎTÉS — la chaîne devient stratégie.
@@ -1456,36 +1457,28 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
       const amp=Math.min(1,(t-(p._settle||0)));
       const bq=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.cos(ph*0.7)*0.008*amp)); p.mesh.quaternion.copy(p.baseQuat).multiply(bq); }
     const st=p.state||'white';
+    // v29 : halos clignotants supprimés (lisibilité) ; liserés uniformisés (couleur par état, opacité fixe).
+    const EDGE_OP = 0.5;
+    ud.haloSprite.material.opacity = 0;
+    ud.glowMesh.material.opacity = 0;
     if(st==='cosmic'){
       drawCosmicRing(ud.ringCanvas,t*Math.PI/2);ud.ringTex.needsUpdate=true;ud.ringMesh.material.opacity=1;
-      drawHalo(ud.haloCanvas,196,181,253,t*Math.PI,0.5,255,0,110);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.8;
-      const cp=t*1.5+si;ud.edgeLines.material.color.setRGB(0.5+Math.sin(cp)*0.3,Math.sin(cp+2.1)*0.3+0.2,0.5+Math.sin(cp+4.2)*0.3);ud.edgeLines.material.opacity=0.5+Math.sin(t*2)*0.15;
-      ud.glowMesh.material.color.set(0x8338ec);ud.glowMesh.material.opacity=0.2+0.12*Math.sin(t*2+si);
+      ud.edgeLines.material.color.set(0x8338ec);ud.edgeLines.material.opacity=EDGE_OP;
     } else if(st==='supernovae'||st==='plasma'){
-      // supernovae du prisme ; plasma (état max stack) = même rendu, légèrement plus rapide/intense
       drawSupernovaeRing(ud.ringCanvas,t*Math.PI*(st==='plasma'?1:2/3));ud.ringTex.needsUpdate=true;ud.ringMesh.material.opacity=1;
-      const hr=255,hg=st==='plasma'?32:140,hb=st==='plasma'?96:0;
-      drawHalo(ud.haloCanvas,255,235,59,t*Math.PI*1.25,st==='plasma'?0.75:0.6,hr,hg,hb);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.9;
-      ud.edgeLines.material.color.setRGB(1,0.4+Math.sin(t*2+si)*0.3,Math.sin(t*1.5)*0.15);ud.edgeLines.material.opacity=0.5+Math.sin(t*2.5)*0.12;
-      ud.glowMesh.material.color.set(st==='plasma'?0xff2060:0xff8c00);ud.glowMesh.material.opacity=0.3+0.2*Math.sin(t*2.5+si);
+      ud.edgeLines.material.color.set(st==='plasma'?0xff2060:0xff8c00);ud.edgeLines.material.opacity=EDGE_OP;
     } else if(st==='emerald'){
       ud.ringMesh.material.opacity=0;
-      drawHalo(ud.haloCanvas,52,211,153,t*Math.PI*0.8,0.35,5,150,105);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.7;
-      ud.edgeLines.material.color.set(0x34d399);ud.edgeLines.material.opacity=0.3+0.1*Math.sin(t*1.5+si);
-      ud.glowMesh.material.color.set(0x34d399);ud.glowMesh.material.opacity=0.15+0.1*Math.sin(t*1.5+si);
+      ud.edgeLines.material.color.set(0x34d399);ud.edgeLines.material.opacity=EDGE_OP;
     } else if(st==='gold'){
       ud.ringMesh.material.opacity=0;
-      drawHalo(ud.haloCanvas,255,235,120,t*Math.PI*0.6,0.25,255,170,0);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.5;
-      ud.edgeLines.material.color.set(0xffd700);ud.edgeLines.material.opacity=0.25+0.08*Math.sin(t*1.2+si);
-      ud.glowMesh.material.color.set(0xffd700);ud.glowMesh.material.opacity=0.08+0.05*Math.sin(t*1.2+si);
+      ud.edgeLines.material.color.set(0xffd700);ud.edgeLines.material.opacity=EDGE_OP;
     } else if(st==='silver'){
       ud.ringMesh.material.opacity=0;
-      drawHalo(ud.haloCanvas,34,211,238,t*Math.PI*0.5,0.2,6,120,160);ud.haloTex.needsUpdate=true;ud.haloSprite.material.opacity=0.4;
-      ud.edgeLines.material.color.set(0x22d3ee);ud.edgeLines.material.opacity=0.2+0.06*Math.sin(t+si);
-      ud.glowMesh.material.color.set(0x06b6d4);ud.glowMesh.material.opacity=0.05+0.03*Math.sin(t+si);
+      ud.edgeLines.material.color.set(0x22d3ee);ud.edgeLines.material.opacity=EDGE_OP;
     } else {
-      ud.glowMesh.material.opacity=0;ud.ringMesh.material.opacity=0;ud.haloSprite.material.opacity=0;
-      ud.edgeLines.material.color.set(0xd2d2dc);ud.edgeLines.material.opacity=0.5;
+      ud.ringMesh.material.opacity=0;
+      ud.edgeLines.material.color.set(0xd2d2dc);ud.edgeLines.material.opacity=EDGE_OP;
     }
     ud.faceMesh.material.opacity = 1;
   }));
