@@ -113,6 +113,11 @@
         AVANT chaîne/simple/aimant. Change le jeu : sur l'axe court, le miroir n'est plus une
         montée mais une consolidation — le joueur peut casser le miroir par tap-rotation
         s'il veut au contraire conserver les deux pièces pour une fusion classique.
+  v30 : LA CIBLE. Domino-objectif au CENTRE de la grille (idx 22, col 2 row 4), marqué
+        target:true → ne fusionne pas (getExposedFace renvoie null), ne s'aimante pas,
+        bloque le slide de sa rangée/colonne. Affiché en ghost (faceMesh opacity 0.35).
+        Couronne de 9 dominos disposée en mandala autour (whites/silvers/golds + 1
+        régresseur en asymétrie). Liserés affinés EDGE_W 0.033→0.011 (≈1 px).
   v29 : halos clignotants supprimés (lisibilité dominos) ; liserés uniformisés (couleur par état, opacité 0.5 fixe, plus de pulsation sin).
   v27 : liseré 0.055→0.033 (3 px) ; blanc opacité 0.7→0.5.
   v19 : LE MUET + LA PIÈCE COMMANDÉE (kaizen 3 et 4), NBOARDS 9→11. La grande
@@ -408,17 +413,51 @@ function drawHalo(cv,r,g,b,phase,intensity,r2,g2,b2){
 //    sont aspirées et chaînent à 3 en une fusion (résultat silver au centre).
 //    → Démonstration directe de la chaîne bilatérale, sans même tap requis.
 const DEMO_LEVEL=[
-  // Grille 5×9 (col=idx%5, row=floor(idx/5)). LANDING_IDX=10 (col0,row2) laissé libre.
-  // ① ligne 0 (idx0,idx1) — orientés pour NE PAS matcher au contact
-  [0, 'white','circle','line',0],
-  [1, 'white','line','circle',0],
-  // ② ligne 1 (idx6,idx9) — couloir libre mais faces non alignées
-  [6, 'white','wave','line',0],
-  [9, 'white','line','wave',180],
-  // ③ colonne 1 (idx11,16,21) — pièces présentes, aucune orientée pour matcher
-  [11,'white','line','chevron',90],
-  [16,'white','chevron','wave',90],
-  [21,'white','chevron','line',180],
+  // v30 — COMPOSITION MANDALA autour d'une CIBLE centrale.
+  // Grille 5×9 (col=idx%5, row=floor(idx/5)). Centre = (col 2, row 4) = idx 22.
+  // Format : [idx, state, face1, face2, rotation, regress?, target?]
+  //
+  // RÈGLES DE NON-FUSION AU DÉMARRAGE (vérifiées une à une) :
+  //  • Toutes les pièces en rot 0 (ou 180 quand utile) → aucune n'expose left/right
+  //    → AUCUN aimant horizontal possible.
+  //  • Pour chaque paire sur même colonne (couloir vide) : faces au contact (bottom du
+  //    haut / top du bas) NE MATCHENT PAS → aucun aimant vertical.
+  //  • Pour chaque paire sur même ligne/colonne (couloir vide) : (f1,f2,rot) DIFFÈRE
+  //    → aucun miroir parfait → aucune twin absorption.
+  //  • Aucune adjacence directe → aucune fusion simple.
+  //
+  // VOIE DE PRODUCTION DE LA CIBLE (silver / circle ⊕ wave) :
+  //  6 (white circle,line) + 8 (white wave,line) → fusion sur LINE → silver (circle, wave).
+  //  Le joueur doit les amener verticalement adjacents (slides successifs).
+  //
+  //   Row 0  R . . . .      R = régresseur (circle/line)
+  //   Row 1  . X . X .      whites circle/line ; wave/line
+  //   Row 2  . . . . .
+  //   Row 3  X . . . X      whites wave/circle ; chevron/line
+  //   Row 4  . . T . .      CIBLE silver (circle, wave) — INERTE
+  //   Row 5  X . . . X      silvers line/chevron ; wave/line
+  //   Row 6  . . . . .
+  //   Row 7  . X . X .      golds chevron/wave ; line/wave (rot 180)
+  //   Row 8  . . . . .
+
+  // Régresseur isolé (asymétrie volontaire, outil descendant)
+  [0, 'white','circle','line',0,1],
+
+  // Couronne haute (row 1) — la PAIRE-CLÉ qui produit la cible
+  [6, 'white','circle','line',0],   // top=circle, bottom=line
+  [8, 'white','wave',  'line',0],   // top=wave,   bottom=line   →  6+8 contact line → silver(circle, wave)
+
+  // Cardinaux latéraux haut (row 3)
+  [15,'white','wave','circle', 0],  // top=wave,    bottom=circle
+  [19,'white','chevron','line',0],  // top=chevron, bottom=line
+
+  // Cardinaux latéraux bas (row 5)
+  [25,'silver','line','chevron',0], // top=line, bottom=chevron
+  [29,'silver','wave','line',   0], // top=wave, bottom=line
+
+  // Couronne basse (row 7)
+  [36,'gold','chevron','wave',0],   // top=chevron, bottom=wave
+  [38,'gold','line',   'wave',180], // rot 180 → top=wave (face2), bottom=line (face1)
 ];
 
 // ─── Plateau unique : plus de gradation entre plans ───
@@ -496,7 +535,7 @@ function createDominoMesh(face1,face2,state,regress,rotation){ const grp=new THR
   // ── LISERÉ PLEIN (vraie épaisseur, indépendant du lineWidth WebGL) ──
   // Cadre arrondi = forme extérieure SZ avec un trou intérieur (SZ - 2*EDGE_W).
   // L'écart EDGE_W est l'épaisseur réelle du liseré, réglable au pixel près.
-  const EDGE_W = 0.033;                                    // épaisseur du liseré (unités monde) ≈ 3 pixels
+  const EDGE_W = 0.011;                                    // v30 : épaisseur du liseré ≈ 1 pixel
   const frameShape = rrShape(SZ, SZ, RR);
   frameShape.holes.push(rrShape(SZ-2*EDGE_W, SZ-2*EDGE_W, Math.max(0.01,RR-EDGE_W)));
   const edge=new THREE.Mesh(new THREE.ShapeGeometry(frameShape),new THREE.MeshBasicMaterial({color:edgeCol,transparent:true,opacity:0.18,side:THREE.DoubleSide,depthWrite:false}));
@@ -524,9 +563,9 @@ let boards=[], currentBoard=0, moves=0;
 function buildBoards(){
   boards.forEach(b=>b.forEach(p=>{ if(p&&p.mesh)removeDomino(p.mesh); }));
   boards=DEMOS.map(()=>new Array(TOTAL).fill(null));
-  DEMOS.forEach((demo,f)=>{ demo.forEach(([idx,state,face1,face2,rotation,regress])=>{
+  DEMOS.forEach((demo,f)=>{ demo.forEach(([idx,state,face1,face2,rotation,regress,target])=>{
     const mesh=createDominoMesh(face1,face2,state,regress,rotation||0); mesh.visible=false; addDomino(mesh,f);
-    boards[f][idx]={state,state1:state,state2:state,face1,face2,rotation:rotation||0,regress:!!regress,mesh,face:f}; }); });
+    boards[f][idx]={state,state1:state,state2:state,face1,face2,rotation:rotation||0,regress:!!regress,target:!!target,mesh,face:f}; }); });
 }
 
 // ════════════════════════════════════════════
@@ -542,7 +581,7 @@ function snapshotState(){
     currentBoard,
     boards: boards.map(arr=>arr.map(p=>p? {
       state:p.state, state1:p.state1, state2:p.state2,
-      face1:p.face1, face2:p.face2, rotation:p.rotation||0, regress:!!p.regress, face:p.face
+      face1:p.face1, face2:p.face2, rotation:p.rotation||0, regress:!!p.regress, target:!!p.target, face:p.face
     } : null))
   };
 }
@@ -555,7 +594,7 @@ function restoreState(snap){
   boards=snap.boards.map((arr,f)=>arr.map(d=>{
     if(!d)return null;
     const mesh=createDominoMesh(d.face1,d.face2,d.state,d.regress,d.rotation||0); mesh.visible=false; addDomino(mesh,f);
-    return {state:d.state,state1:d.state1,state2:d.state2,face1:d.face1,face2:d.face2,rotation:d.rotation||0,regress:!!d.regress,mesh,face:f};
+    return {state:d.state,state1:d.state1,state2:d.state2,face1:d.face1,face2:d.face2,rotation:d.rotation||0,regress:!!d.regress,target:!!d.target,mesh,face:f};
   }));
   assignFaces(); updateUI(); updateUndoBtn();
 }
@@ -633,10 +672,11 @@ function showToast(msg){ const t=document.getElementById('toast'); t.textContent
 
 // ─── FACES EXPOSÉES (porté du V4) ───
 // Selon la rotation, chaque domino expose face1/face2 sur top/bottom/left/right.
-function getExposedFace(p,dir){ const r=(((p.rotation||0)%360)+360)%360;
+// v30 : si p.target → null (la cible est inerte côté gameplay, comme un Muet).
+function getExposedFace(p,dir){ if(p&&p.target) return null; const r=(((p.rotation||0)%360)+360)%360;
   const map={0:{top:'face1',bottom:'face2'},90:{left:'face2',right:'face1'},180:{top:'face2',bottom:'face1'},270:{left:'face1',right:'face2'}};
   const f=map[r]&&map[r][dir]; return f?p[f]:null; }
-function getRemainingFace(p,excDir){ const r=(((p.rotation||0)%360)+360)%360;
+function getRemainingFace(p,excDir){ if(p&&p.target) return null; const r=(((p.rotation||0)%360)+360)%360;
   const map={0:{top:'face2',bottom:'face1'},90:{right:'face2',left:'face1'},180:{top:'face1',bottom:'face2'},270:{right:'face1',left:'face2'}};
   const f=map[r]&&map[r][excDir]; return f?p[f]:null; }
 
@@ -656,6 +696,7 @@ function refreshTex(p){ if(!p||!p.mesh)return; const st=p.state1||p.state||'whit
 // rotation — la texture rendue correspond exactement à l'angle physique atteint, bascule invisible.
 // Clics consécutifs : si une rotation tourne déjà sur CETTE pièce, on EMPILE (file) au lieu d'ignorer.
 function rotatePiece(i,clockwise){ const p=curBoard()[i]; if(!p||!p.mesh)return;
+  if(p.target) return;                                            // v30 : la cible ne pivote pas
   const delta=clockwise?90:-90;
   // déjà en rotation sur la même pièce → on met en file (enchaîne un 2e/3e 90°)
   if(rotAnim && rotAnim.piece===p){ pushHistory(); rotAnim.queue.push(delta); return; }
@@ -693,9 +734,12 @@ function colSpan(){ return ROWS*CELL; }
 function startSlide(axis,row,col){
   dragAxis=axis; dragMembers=[]; dragOff=0;
   const head=curBoard();
+  // v30 : une rangée/colonne qui contient la CIBLE est figée — on n'entame pas le drag.
   if(axis==='horizontal'){
+    for(let c=0;c<COLS;c++){ const p=head[row*COLS+c]; if(p&&p.target){ dragAxis=null; return; } }
     for(let c=0;c<COLS;c++){ const idx=row*COLS+c; const p=head[idx]; if(p) dragMembers.push({p,baseCol:c,baseRow:row}); }
   } else {
+    for(let r=0;r<ROWS;r++){ const p=head[r*COLS+col]; if(p&&p.target){ dragAxis=null; return; } }
     for(let r=0;r<ROWS;r++){ const idx=r*COLS+col; const p=head[idx]; if(p) dragMembers.push({p,baseCol:col,baseRow:r}); }
   }
 }
@@ -1452,8 +1496,8 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     p.mesh.visible = shown;
     if(!shown) return;
     if(!swapAnim){ p.mesh.position.z = SAT_LIFT; }
-    // balancement décoratif (suspendu pendant rotation cube / fusion / autres anims bloquantes)
-    if(p.mesh.visible&&!isAnimating&&!swapAnim&&!busy&&!(rotAnim&&rotAnim.mesh===p.mesh)&&p.baseQuat){ const ph=t*1.2+si*1.7;
+    // balancement décoratif (suspendu pendant rotation cube / fusion / autres anims bloquantes ; ET sur la cible : immobile).
+    if(p.mesh.visible&&!isAnimating&&!swapAnim&&!busy&&!(rotAnim&&rotAnim.mesh===p.mesh)&&p.baseQuat&&!p.target){ const ph=t*1.2+si*1.7;
       const amp=Math.min(1,(t-(p._settle||0)));
       const bq=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.cos(ph*0.7)*0.008*amp)); p.mesh.quaternion.copy(p.baseQuat).multiply(bq); }
     const st=p.state||'white';
