@@ -495,56 +495,87 @@ const DEMO_LEVEL=[
 const PORTE_POSITIONS=[21,22,23];
 function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
 
-// Disposition : pièces dispersées en diagonale, aucune paire alignée avec couloir libre
-// → AUCUN match (fusion/aimant/twin) au départ. Le joueur doit glisser pour provoquer les contacts.
-// Lignes utilisées : 0–3 et 5–8 (la row4 = rangée des PORTES). Colonnes décalées par ligne.
-// ── PLATEAU 1 ──
+// Motifs ARTY symétriques, centrés sur la rangée des PORTES (row4).
+// Toutes les pièces en portrait (rot 0) : le portrait n'expose d'icône qu'en haut/bas,
+// donc AUCUN contact horizontal possible. Les contacts verticaux sont réglés pour ne
+// jamais coïncider → AUCUN match (fusion/aimant/twin) au départ. Portes distinctes
+// (21/22/23) pour éviter tout twin entre elles.
+// ── PLATEAU 1 — LOSANGE ──
 const LEVEL_1=[
-  // RANGÉE COSMIC CENTRALE : dominos-PORTES (cases 21/22/23, partagées sur tous les plateaux)
-  [21,'cosmic','chevron','wave',0],
-  [22,'cosmic','wave','chevron',0],
-  [23,'cosmic','chevron','wave',0],
-  [0, 'white','circle','line',0],     // r0 c0
-  [6, 'white','wave','line',0],       // r1 c1
-  [12,'silver','line','circle',0],    // r2 c2
-  [18,'white','chevron','wave',0],    // r3 c3
-  [29,'white','circle','chevron',0],  // r5 c4
-  [30,'gold','wave','line',0],        // r6 c0
-  [36,'white','line','wave',0],       // r7 c1
-  [42,'silver','circle','chevron',0], // r8 c2
+  [2,'gold','circle','line',0],
+  [6,'white','wave','chevron',0],
+  [8,'white','line','wave',0],
+  [10,'silver','chevron','circle',0],
+  [14,'silver','circle','wave',0],
+  [17,'silver','wave','circle',0],
+  [21,'cosmic','circle','wave',0],   // PORTE
+  [22,'cosmic','wave','circle',0],   // PORTE
+  [23,'cosmic','line','chevron',0],  // PORTE
+  [27,'white','chevron','line',0],
+  [30,'white','wave','chevron',0],
+  [34,'white','chevron','circle',0],
+  [36,'white','circle','wave',0],
+  [38,'white','wave','line',0],
+  [42,'gold','circle','chevron',0],
 ];
-// ── PLATEAU 2 ──
+// ── PLATEAU 2 — CROIX ──
 const LEVEL_2=[
-  [2, 'white','wave','line',0],       // r0 c2
-  [8, 'silver','chevron','circle',0], // r1 c3
-  [14,'white','circle','wave',0],     // r2 c4
-  [15,'gold','line','chevron',0],     // r3 c0
-  [26,'white','chevron','line',0],    // r5 c1
-  [32,'white','wave','circle',0],     // r6 c2
-  [38,'silver','chevron','circle',0], // r7 c3
-  [44,'white','line','wave',0],       // r8 c4
+  [2,'gold','wave','circle',0],
+  [7,'white','chevron','line',0],
+  [10,'silver','circle','line',0],
+  [12,'white','circle','wave',0],
+  [14,'silver','line','circle',0],
+  [17,'white','line','chevron',0],
+  [20,'silver','wave','line',0],
+  [21,'cosmic','chevron','wave',0],  // PORTE
+  [22,'cosmic','wave','circle',0],   // PORTE
+  [23,'cosmic','line','chevron',0],  // PORTE
+  [24,'silver','line','wave',0],
+  [27,'white','wave','line',0],
+  [30,'white','wave','chevron',0],
+  [32,'white','chevron','circle',0],
+  [34,'white','chevron','wave',0],
+  [37,'white','line','wave',0],
+  [42,'gold','circle','chevron',0],
 ];
-// ── PLATEAU 3 (un régresseur, isolé) ──
+// ── PLATEAU 3 — FLÈCHE (un régresseur au cœur) ──
 const LEVEL_3=[
-  [1, 'gold','circle','wave',0],      // r0 c1
-  [7, 'white','line','chevron',0],    // r1 c2
-  [13,'white','wave','circle',0],     // r2 c3
-  [19,'white','chevron','line',0,1],  // r3 c4  régresseur (6e champ=1)
-  [25,'silver','circle','line',0],    // r5 c0
-  [31,'white','chevron','wave',0],    // r6 c1
-  [37,'gold','line','wave',0],        // r7 c2
-  [43,'white','chevron','circle',0],  // r8 c3
+  [0,'white','circle','wave',0],
+  [2,'gold','line','chevron',0],
+  [4,'white','wave','circle',0],
+  [6,'white','chevron','line',0],
+  [8,'white','circle','wave',0],
+  [12,'silver','wave','chevron',0,1], // régresseur
+  [15,'white','line','circle',0],
+  [19,'white','chevron','line',0],
+  [21,'cosmic','chevron','wave',0],  // PORTE
+  [22,'cosmic','wave','circle',0],   // PORTE
+  [23,'cosmic','line','chevron',0],  // PORTE
+  [27,'silver','wave','line',0],
+  [31,'white','circle','chevron',0],
+  [33,'white','line','circle',0],
+  [37,'white','chevron','wave',0],
+  [40,'white','wave','line',0],
+  [42,'gold','circle','chevron',0],
+  [44,'white','wave','circle',0],
 ];
-// ── PLATEAU 4 ──
+// ── PLATEAU 4 — ZIGZAG ──
 const LEVEL_4=[
-  [3, 'white','circle','chevron',0],  // r0 c3
-  [9, 'silver','wave','line',0],      // r1 c4
-  [10,'white','line','circle',0],     // r2 c0
-  [16,'gold','chevron','wave',0],     // r3 c1
-  [27,'white','wave','chevron',0],    // r5 c2
-  [33,'white','circle','line',0],     // r6 c3
-  [39,'silver','chevron','wave',0],   // r7 c4
-  [40,'white','line','circle',0],     // r8 c0
+  [1,'white','circle','line',0],
+  [3,'white','wave','chevron',0],
+  [7,'silver','line','circle',0],
+  [10,'white','chevron','wave',0],
+  [14,'white','circle','line',0],
+  [17,'silver','wave','chevron',0],
+  [21,'cosmic','chevron','wave',0],  // PORTE
+  [22,'cosmic','wave','circle',0],   // PORTE
+  [23,'cosmic','line','chevron',0],  // PORTE
+  [27,'gold','line','wave',0],
+  [30,'white','line','chevron',0],
+  [34,'white','wave','circle',0],
+  [37,'silver','chevron','line',0],
+  [41,'white','circle','wave',0],
+  [43,'white','line','chevron',0],
 ];
 
 const DEMOS=[ LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4 ];
@@ -710,6 +741,30 @@ function hidePorteProxies(){
   clearPorteProxies();
   for(const idx of PORTE_POSITIONS){ const p=boards[currentBoard][idx]; if(p&&p.mesh)p.mesh.visible=true; }
 }
+
+// ─── HALO DE PORTE : faisceaux cosmic reliant les plateaux (visibles pendant la rotation) ───
+// Pour chaque porte, un axe lumineux traverse la pile en profondeur (le long de Z), fixe dans
+// l'espace. Il matérialise que la porte transperce les 4 plateaux. Intensité montée/descendue
+// selon l'avancement de la rotation (porteBeamAmp).
+let porteBeamAmp=0;            // 0 = invisible (statique) ; 1 = plein (rotation)
+const porteBeams=[];
+(function buildPorteBeams(){
+  const len=RADIUS*2+FACE_W;   // traverse tout le cube
+  for(const idx of PORTE_POSITIONS){
+    const {col,row}=getPos(idx); const {x,y}=cellToLocal(col,row);
+    const grp=new THREE.Group(); grp.position.set(x,y,0);
+    // cœur fin lumineux
+    const core=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,len,16),
+      new THREE.MeshBasicMaterial({color:0xc4b5fd,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
+    core.rotation.x=Math.PI/2;   // axe le long de Z
+    // gaine large diffuse
+    const glow=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.22,len,20),
+      new THREE.MeshBasicMaterial({color:0x8338ec,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
+    glow.rotation.x=Math.PI/2;
+    grp.add(glow); grp.add(core); grp.userData={core,glow};
+    scene.add(grp); porteBeams.push(grp);
+  }
+})();
 
 // ════════════════════════════════════════════
 //  HISTORIQUE / UNDO ILLIMITÉ
@@ -1799,6 +1854,14 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     else if(st==='silver'){ ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0x22d3ee); }
     else { ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0xd2d2dc); }
     ud.edgeLines.material.opacity=0.5; ud.faceMesh.material.opacity=1; });
+  // HALO DE PORTE : amplitude montée pendant la rotation, retombe au repos.
+  porteBeamAmp += ((isAnimating?1:0)-porteBeamAmp)*0.12;
+  porteBeams.forEach((g,k)=>{ const ud=g.userData; const pulse=0.85+Math.sin(t*4+k*0.9)*0.15;
+    const a=porteBeamAmp*pulse;
+    ud.core.material.opacity=Math.min(1,a*0.9);
+    ud.glow.material.opacity=a*0.35;
+    const s=1+porteBeamAmp*0.15*Math.sin(t*3+k); ud.glow.scale.set(s,1,s);
+    g.visible=porteBeamAmp>0.02; });
   renderer.render(scene,camera);
 }
 buildBoards(); assignFaces(); updateUI(); animate();
