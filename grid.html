@@ -244,7 +244,7 @@
     display:none; align-items:center; gap:4px; z-index:210; padding:6px 12px; border-radius:9px;
     background:rgba(22,23,38,0.88); border:1px solid rgba(255,255,255,0.12); backdrop-filter:blur(4px);
     font-size:0.58rem; letter-spacing:0.14em; color:rgba(220,220,235,0.75); pointer-events:none; }
-  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(60px);
+  .toast { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 14px); left:50%; transform:translateX(-50%) translateY(-60px);
     background:rgba(22,23,38,0.95); border:1px solid rgba(255,255,255,0.07); border-radius:8px;
     padding:8px 16px; font-size:0.7rem; transition:transform 0.25s ease-out; z-index:300; pointer-events:none; }
   .toast.show { transform:translateX(-50%) translateY(0); }
@@ -492,41 +492,59 @@ const DEMO_LEVEL=[
 
 // Cases-portes : positions fixes partagées par tous les plateaux (idx grille 5×9).
 // idx 7 = col 2, row 1 (porte haute centrale). Multi-porte dès le départ : tableau.
-const PORTE_POSITIONS=[7];
+const PORTE_POSITIONS=[21,22,23];
 function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
 
-// ── PLATEAU 1 — Fusion simple & aimant (la base, case-porte libre) ──
+// Disposition : pièces dispersées en diagonale, aucune paire alignée avec couloir libre
+// → AUCUN match (fusion/aimant/twin) au départ. Le joueur doit glisser pour provoquer les contacts.
+// Lignes utilisées : 0–3 et 5–8 (la row4 = rangée des PORTES). Colonnes décalées par ligne.
+// ── PLATEAU 1 ──
 const LEVEL_1=[
-  [7, 'gold','circle','wave',0],    // ← DOMINO-PORTE initial (case partagée idx 7)
-  [10,'white','circle','line',0],
-  [14,'white','circle','line',0],   // 10+14 même ligne, contact 'circle' → aimant horizontal
-  [25,'white','wave','line',0],
-  [29,'white','wave','line',0],     // paire 'wave' à rapprocher
-  [0, 'white','chevron','line',0],
+  // RANGÉE COSMIC CENTRALE : dominos-PORTES (cases 21/22/23, partagées sur tous les plateaux)
+  [21,'cosmic','chevron','wave',0],
+  [22,'cosmic','wave','chevron',0],
+  [23,'cosmic','chevron','wave',0],
+  [0, 'white','circle','line',0],     // r0 c0
+  [6, 'white','wave','line',0],       // r1 c1
+  [12,'silver','line','circle',0],    // r2 c2
+  [18,'white','chevron','wave',0],    // r3 c3
+  [29,'white','circle','chevron',0],  // r5 c4
+  [30,'gold','wave','line',0],        // r6 c0
+  [36,'white','line','wave',0],       // r7 c1
+  [42,'silver','circle','chevron',0], // r8 c2
 ];
-// ── PLATEAU 2 — Twin absorption (miroirs parfaits) ──
+// ── PLATEAU 2 ──
 const LEVEL_2=[
-  [20,'silver','circle','wave',0],
-  [24,'silver','circle','wave',0],  // miroir parfait même rangée → twin (rot 0 portrait)
-  [11,'white','line','chevron',0],
-  [16,'white','line','chevron',0],
-  [40,'gold','wave','circle',0],
+  [2, 'white','wave','line',0],       // r0 c2
+  [8, 'silver','chevron','circle',0], // r1 c3
+  [14,'white','circle','wave',0],     // r2 c4
+  [15,'gold','line','chevron',0],     // r3 c0
+  [26,'white','chevron','line',0],    // r5 c1
+  [32,'white','wave','circle',0],     // r6 c2
+  [38,'silver','chevron','circle',0], // r7 c3
+  [44,'white','line','wave',0],       // r8 c4
 ];
-// ── PLATEAU 3 — Régresseur (descendre un état) ──
+// ── PLATEAU 3 (un régresseur, isolé) ──
 const LEVEL_3=[
-  [20,'gold','circle','line',0],    // gold bloqué
-  [23,'white','line','circle',0,1], // régresseur (6e champ=1)
-  [31,'silver','circle','line',0],
-  [5, 'white','wave','chevron',0],
-  [9, 'white','wave','chevron',0],
+  [1, 'gold','circle','wave',0],      // r0 c1
+  [7, 'white','line','chevron',0],    // r1 c2
+  [13,'white','wave','circle',0],     // r2 c3
+  [19,'white','chevron','line',0,1],  // r3 c4  régresseur (6e champ=1)
+  [25,'silver','circle','line',0],    // r5 c0
+  [31,'white','chevron','wave',0],    // r6 c1
+  [37,'gold','line','wave',0],        // r7 c2
+  [43,'white','chevron','circle',0],  // r8 c3
 ];
-// ── PLATEAU 4 — Paliers d'état (construire pour fusionner) ──
+// ── PLATEAU 4 ──
 const LEVEL_4=[
-  [10,'white','circle','wave',0],
-  [14,'white','circle','wave',0],   // → silver circle? non : contact wave→ silver
-  [30,'silver','line','chevron',0],
-  [34,'silver','line','chevron',0],
-  [2, 'gold','circle','line',0],
+  [3, 'white','circle','chevron',0],  // r0 c3
+  [9, 'silver','wave','line',0],      // r1 c4
+  [10,'white','line','circle',0],     // r2 c0
+  [16,'gold','chevron','wave',0],     // r3 c1
+  [27,'white','wave','chevron',0],    // r5 c2
+  [33,'white','circle','line',0],     // r6 c3
+  [39,'silver','chevron','wave',0],   // r7 c4
+  [40,'white','line','circle',0],     // r8 c0
 ];
 
 const DEMOS=[ LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4 ];
@@ -664,6 +682,35 @@ function syncPortes(srcBoard){
   }
 }
 
+// ─── PORTES FIXES : « triche » de rendu pendant la rotation du cube ───
+// Les cases-portes sont de VRAIES cases de plateau (logique ADAM Portes inchangée :
+// slide / fusion / twin / propagation). Mais visuellement on veut qu'elles ne tournent
+// JAMAIS avec le cube. Astuce : pendant la rotation, on masque les vrais meshes-portes
+// (qui tournent avec leur face) et on affiche à leur place des PROXIES fixes en scène-monde,
+// clones de l'état COURANT des portes (donc vivants : si le contenu change, le proxy change).
+// Rotation finie, on masque les proxies et on réaffiche les vrais meshes. Immobiles à l'écran,
+// vivants en logique.
+let porteProxies=[];   // meshes-proxy fixes dans scene (recréés à chaque rotation)
+function clearPorteProxies(){ porteProxies.forEach(m=>{ if(m.parent)m.parent.remove(m); }); porteProxies=[]; }
+function showPorteProxies(){
+  clearPorteProxies();
+  for(const idx of PORTE_POSITIONS){
+    const p=boards[currentBoard][idx]; if(!p)continue;
+    if(p.mesh) p.mesh.visible=false;                       // masque le vrai (il va tourner avec la face)
+    const {col,row}=getPos(idx); const {x,y}=cellToLocal(col,row);
+    const proxy=createDominoMesh(p.face1,p.face2,p.state,p.regress,p.rotation||0);
+    proxy.position.set(x,y,SAT_LIFT); proxy.quaternion.identity();
+    proxy.userData._porteState=p.state;                    // pour l'anim de ring (cosmic, etc.)
+    proxy.userData._porteIdx=idx;
+    scene.add(proxy);                                       // ← scene, pas cubeGroup : fixe
+    porteProxies.push(proxy);
+  }
+}
+function hidePorteProxies(){
+  clearPorteProxies();
+  for(const idx of PORTE_POSITIONS){ const p=boards[currentBoard][idx]; if(p&&p.mesh)p.mesh.visible=true; }
+}
+
 // ════════════════════════════════════════════
 //  HISTORIQUE / UNDO ILLIMITÉ
 //  On snapshote l'ÉTAT LOGIQUE complet (tous les plans + plan courant) AVANT
@@ -746,11 +793,13 @@ function curBoard(){ return boards[currentBoard]; }
 //  voisine devant la caméra. targetQuat = orientation cible ; le slerp est joué dans animate.
 const targetQuat=new THREE.Quaternion();
 function navRight(){ if(busy||isAnimating||swapAnim||rotAnim)return; busy=true;isAnimating=true;navDir=1;
+  showPorteProxies();
   targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0), cubeAngleFor(mod(currentBoard+1))); }
 function navLeft(){ if(busy||isAnimating||swapAnim||rotAnim)return; busy=true;isAnimating=true;navDir=-1;
+  showPorteProxies();
   targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0), cubeAngleFor(mod(currentBoard-1))); }
 function onRotationComplete(){ currentBoard=mod(currentBoard+navDir); navDir=0;
-  cubeGroup.quaternion.copy(targetQuat); assignFaces(); isAnimating=false; busy=false; updateUI();
+  cubeGroup.quaternion.copy(targetQuat); assignFaces(); hidePorteProxies(); isAnimating=false; busy=false; updateUI();
   setTimeout(checkFusions,100); }
 
 function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===mod(currentBoard))); updateGoalTag(); }
@@ -1013,6 +1062,7 @@ function dropPiece(cx,cy){
 }
 
 let downX=0,downY=0,downT=0,moved=false;
+let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
 canvas.addEventListener('pointerdown',e=>{
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=e.clientX; downY=e.clientY; downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
@@ -1020,7 +1070,13 @@ canvas.addEventListener('pointerdown',e=>{
   if(isAnimating||swapAnim||migrating)return;
   if(busy && !rotAnim)return;
   dragPiece=pieceAt(e.clientX,e.clientY);
-  if(!dragPiece)return;
+  if(!dragPiece){
+    // VIDE (hors pièce) : on arme un swipe horizontal → navigation plateau. Grande zone tactile.
+    if(!isAnimating&&!swapAnim&&!migrating&&!(busy&&!rotAnim)){
+      navSwipeX=e.clientX; navSwipeY=e.clientY; navSwipeT=Date.now(); canvas.setPointerCapture(e.pointerId);
+    }
+    return;
+  }
   downX=e.clientX; downY=e.clientY; downT=Date.now(); moved=false;
   dragging=true; dragAxis=null;
   const i=curBoard().indexOf(dragPiece); dragRow=rowOf(i); dragCol=colOf(i);
@@ -1049,6 +1105,12 @@ canvas.addEventListener('pointermove',e=>{
 });
 canvas.addEventListener('pointerup',e=>{
   clearTimeout(pressTimer);
+  // SWIPE-NAV depuis le vide : geste horizontal ample → changer de plateau.
+  if(navSwipeX!=null){
+    const ndx=e.clientX-navSwipeX, ndy=e.clientY-navSwipeY;
+    navSwipeX=navSwipeY=null;
+    if(!dragging && Math.abs(ndx)>=40 && Math.abs(ndx)>Math.abs(ndy)){ ndx>0?navRight():navLeft(); return; }
+  }
   if(!dragging){ return; }
   dragging=false;
   const dx=e.clientX-downX, dy=e.clientY-downY, dt=Date.now()-downT;
@@ -1068,7 +1130,7 @@ canvas.addEventListener('pointerup',e=>{
   if(dragAxis){ commitSlide(); }
   dragPiece=null;
 });
-canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); dragging=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; } dragPiece=null; });
+canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; } dragPiece=null; });
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
   const sp=wp.clone().project(camera); const r=canvas.getBoundingClientRect(); return r.left+(sp.x*0.5+0.5)*r.width; }
 
@@ -1678,7 +1740,9 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // faces à rendre : la courante, et pendant la rotation aussi la cible (les autres masquées)
   const targetBoard = isAnimating ? mod(currentBoard+navDir) : currentBoard;
   boards.forEach((arr,f)=>arr.forEach((p,si)=>{ if(!p||!p.mesh)return; const ud=p.mesh.userData;
-    const shown = (f===currentBoard)||(isAnimating&&f===targetBoard);
+    let shown = (f===currentBoard)||(isAnimating&&f===targetBoard);
+    // pendant la rotation, les cases-portes sont rendues par leurs PROXIES fixes : on masque le vrai
+    if(isAnimating&&isPorteIdx(si)) shown=false;
     p.mesh.visible = shown;
     if(!shown) return;
     if(!swapAnim){ p.mesh.position.z = SAT_LIFT; }
@@ -1724,6 +1788,17 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     const pulse=1.12+Math.sin(t*4)*0.03; m.scale.set(pulse,pulse,pulse);
     const ud=m.userData; if(ud&&ud.edgeLines){ ud.edgeLines.material.opacity=0.85; ud.faceMesh.material.opacity=1; }
   }
+  // PROXIES-PORTES fixes : animés pendant la rotation, immobiles dans l'espace.
+  porteProxies.forEach((m,k)=>{ const ud=m.userData; m.visible=true; const st=ud._porteState||'white';
+    if(st==='cosmic'){ drawCosmicRing(ud.ringCanvas,t*Math.PI/2+k*0.6); ud.ringTex.needsUpdate=true; ud.ringMesh.material.opacity=1;
+      ud.edgeLines.material.color.set(0x8338ec); }
+    else if(st==='supernovae'||st==='plasma'){ drawSupernovaeRing(ud.ringCanvas,t*Math.PI*(st==='plasma'?1:2/3)); ud.ringTex.needsUpdate=true; ud.ringMesh.material.opacity=1;
+      ud.edgeLines.material.color.set(st==='plasma'?0xff2060:0xff8c00); }
+    else if(st==='emerald'){ ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0x34d399); }
+    else if(st==='gold'){ ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0xffd700); }
+    else if(st==='silver'){ ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0x22d3ee); }
+    else { ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0xd2d2dc); }
+    ud.edgeLines.material.opacity=0.5; ud.faceMesh.material.opacity=1; });
   renderer.render(scene,camera);
 }
 buildBoards(); assignFaces(); updateUI(); animate();
