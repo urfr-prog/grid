@@ -100,6 +100,21 @@
      lieu de casser. Rare, placée tard dans la pile : après les épreuves, le don.
 
   ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v32 : MULTIPLATEAU (4) + PORTE PARTAGÉE + TRANSFERT LONG-PRESS. Reprise intégrale
+        du moteur de jeu stack (glissement tapis-roulant, tap-rotation, fusion / twin /
+        régresseur, graphisme et liserés inchangés). Enveloppe stereo : NBOARDS 1→4, les
+        4 tableaux sur les faces d'un cube tournant (navRight/navLeft déjà en place).
+        • PORTE_POSITIONS (case fixe partagée, idx 7) : le domino sur une case-porte est
+          IDENTIQUE sur les 4 plateaux. Jeu normal (glisse/tourne/fusionne) ; seule la
+          propagation logique est spéciale (syncPortes(currentBoard) en tête de checkFusions,
+          + à l'init). Multi-porte dès le départ (tableau PORTE_POSITIONS).
+        • LONG PRESS (≥320 ms immobile) → lockPiece : le domino quitte son plateau et
+          FLOTTE en scene-space (fixe devant la caméra). On navigue (swipe horiz / flèches /
+          dots), puis TAP → dropPiece sur le plateau courant à la case visée (sinon case libre
+          la plus proche). Tap court = rotation (inchangé) ; swipe = tapis-roulant (inchangé).
+          Cases-porte/cible non verrouillables. Undo purge la pièce flottante.
+        • 4 niveaux de démonstration : ① fusion+aimant ② twin absorption ③ régresseur
+          ④ paliers d'état.
   v28 : TWIN ABSORPTION — fusion en MIROIR par les CÔTÉS COURTS du domino (arêtes
         perpendiculaires à sa longueur). Deux dominos visuellement identiques (signature
         [top,right,bottom,left] via getExposedFace, qui intègre la rotation), avec couloir vide,
@@ -200,7 +215,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v19 · Le Muet & La Pièce Commandée (la chaîne devient stratégie)</title>
+<title>ADAM Stack — v32 · Multiplateau (4) + Porte partagée + Transfert long-press</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -212,7 +227,7 @@
   #c { position:fixed; top:0; left:0; width:100vw; height:100vh; display:block; touch-action:none; cursor:default; }
   .info-bar { display:flex; gap:16px; margin-top:10px; font-size:0.65rem; color:rgba(180,180,200,0.5); letter-spacing:0.1em; }
   .info-bar span { color:rgba(220,220,235,0.8); }
-  .nav-dots { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 22px); left:50%; transform:translateX(-50%); display:flex; gap:7px; z-index:200; }
+  .nav-dots { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 14px); left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:7px; z-index:200; padding:14px 40px; touch-action:none; cursor:grab; }
   .nav-dot { width:8px; height:8px; border-radius:50%; background:rgba(34,211,238,0.15); transition:all 0.35s; cursor:pointer; }
   .nav-dot.active { background:rgba(34,211,238,0.7); box-shadow:0 0 9px rgba(34,211,238,0.5); }
   .hint { margin-top:6px; font-size:0.5rem; color:rgba(180,180,200,0.3); letter-spacing:0.12em; }
@@ -261,7 +276,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const COLS=5, ROWS=9, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=1;
+const COLS=5, ROWS=9, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 
 const STATE_ORDER=['white','silver','gold','emerald','cosmic','supernovae','plasma'];
 const MOVE_DIRS={ white:null, silver:[[1,0],[-1,0]], gold:[[1,1],[1,-1],[-1,1],[-1,-1]],
@@ -460,17 +475,71 @@ const DEMO_LEVEL=[
   [38,'gold','line',   'wave',180], // rot 180 → top=wave (face2), bottom=line (face1)
 ];
 
-// ─── Plateau unique : plus de gradation entre plans ───
-const TARGET_BY_BOARD=[0];           // 0 = pas d'objectif (bac à sable de démonstration)
-const GOAL_BY_BOARD=[null];
-function goalFor(boardIdx){ return GOAL_BY_BOARD[boardIdx]||null; }
-function targetFor(boardIdx){ return TARGET_BY_BOARD[boardIdx] != null ? TARGET_BY_BOARD[boardIdx] : 1; }
-const LANDING_IDX=10;
-const DEMOTE_BY_BOARD=[0];
-function demoteFor(boardIdx){ return DEMOTE_BY_BOARD[boardIdx] != null ? DEMOTE_BY_BOARD[boardIdx] : 0; }
-function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
+// ════════════════════════════════════════════════════════════════════════════
+//  v32 — MULTIPLATEAU (4) + PORTE PARTAGÉE + TRANSFERT PAR LONG PRESS
+//  ─ Reprise du moteur de jeu stack (glissement tapis-roulant, tap-rotation,
+//    fusion / twin / régresseur, graphisme et liserés inchangés).
+//  ─ Enveloppe spatiale stereo : 4 tableaux sur les faces d'un cube tournant.
+//  ─ PORTE_POSITIONS : cases FIXES partagées, identiques sur TOUS les plateaux.
+//    Un domino sur une case-porte est le MÊME sur les 4 tableaux. Comportement
+//    de jeu NORMAL (glisse, tourne, fusionne) ; seule la PROPAGATION logique
+//    entre couches est spéciale (syncPortes après chaque action).
+//  ─ LONG PRESS (≥320 ms sans bouger) : VERROUILLE un domino qui se met à
+//    FLOTTER (scene-space) ; on navigue vers un autre plateau ; un TAP le pose
+//    sur le plateau courant → transfert inter-plateaux. (Le tap court reste la
+//    rotation ; le glissement reste le tapis-roulant.)
+// ════════════════════════════════════════════════════════════════════════════
 
-const DEMOS=[ DEMO_LEVEL ];
+// Cases-portes : positions fixes partagées par tous les plateaux (idx grille 5×9).
+// idx 7 = col 2, row 1 (porte haute centrale). Multi-porte dès le départ : tableau.
+const PORTE_POSITIONS=[7];
+function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
+
+// ── PLATEAU 1 — Fusion simple & aimant (la base, case-porte libre) ──
+const LEVEL_1=[
+  [7, 'gold','circle','wave',0],    // ← DOMINO-PORTE initial (case partagée idx 7)
+  [10,'white','circle','line',0],
+  [14,'white','circle','line',0],   // 10+14 même ligne, contact 'circle' → aimant horizontal
+  [25,'white','wave','line',0],
+  [29,'white','wave','line',0],     // paire 'wave' à rapprocher
+  [0, 'white','chevron','line',0],
+];
+// ── PLATEAU 2 — Twin absorption (miroirs parfaits) ──
+const LEVEL_2=[
+  [20,'silver','circle','wave',0],
+  [24,'silver','circle','wave',0],  // miroir parfait même rangée → twin (rot 0 portrait)
+  [11,'white','line','chevron',0],
+  [16,'white','line','chevron',0],
+  [40,'gold','wave','circle',0],
+];
+// ── PLATEAU 3 — Régresseur (descendre un état) ──
+const LEVEL_3=[
+  [20,'gold','circle','line',0],    // gold bloqué
+  [23,'white','line','circle',0,1], // régresseur (6e champ=1)
+  [31,'silver','circle','line',0],
+  [5, 'white','wave','chevron',0],
+  [9, 'white','wave','chevron',0],
+];
+// ── PLATEAU 4 — Paliers d'état (construire pour fusionner) ──
+const LEVEL_4=[
+  [10,'white','circle','wave',0],
+  [14,'white','circle','wave',0],   // → silver circle? non : contact wave→ silver
+  [30,'silver','line','chevron',0],
+  [34,'silver','line','chevron',0],
+  [2, 'gold','circle','line',0],
+];
+
+const DEMOS=[ LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4 ];
+
+// ─── Objectifs : bac à sable de démonstration sur chaque plateau ───
+const TARGET_BY_BOARD=[0,0,0,0];
+const GOAL_BY_BOARD=[null,null,null,null];
+function goalFor(boardIdx){ return GOAL_BY_BOARD[mod(boardIdx)]||null; }
+function targetFor(boardIdx){ const v=TARGET_BY_BOARD[mod(boardIdx)]; return v!=null?v:1; }
+const LANDING_IDX=10;
+const DEMOTE_BY_BOARD=[0,0,0,0];
+function demoteFor(boardIdx){ const v=DEMOTE_BY_BOARD[mod(boardIdx)]; return v!=null?v:0; }
+function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -560,12 +629,39 @@ function createDominoMesh(face1,face2,state,regress,rotation){ const grp=new THR
 }
 
 let boards=[], currentBoard=0, moves=0;
+let lockedPiece=null;   // domino en transfert (flotte en scene-space pendant la navigation)
 function buildBoards(){
   boards.forEach(b=>b.forEach(p=>{ if(p&&p.mesh)removeDomino(p.mesh); }));
   boards=DEMOS.map(()=>new Array(TOTAL).fill(null));
   DEMOS.forEach((demo,f)=>{ demo.forEach(([idx,state,face1,face2,rotation,regress,target])=>{
     const mesh=createDominoMesh(face1,face2,state,regress,rotation||0); mesh.visible=false; addDomino(mesh,f);
     boards[f][idx]={state,state1:state,state2:state,face1,face2,rotation:rotation||0,regress:!!regress,target:!!target,mesh,face:f}; }); });
+  syncPortes(currentBoard);   // propage la définition-porte initiale (plateau 0) sur tous les plateaux
+}
+
+// ─── PORTE : propagation logique inter-plateaux (règle ADAM Portes) ───
+// La case-porte est UN slot partagé : le domino qui s'y trouve est identique sur les 4
+// plateaux. On prend le plateau "source" (celui qui vient de bouger) comme vérité, puis on
+// recopie l'état logique sur les autres plateaux (chaque plateau garde son PROPRE mesh pour
+// le rendu de sa face — seules les valeurs sont clonées). Si la case est vide sur la source,
+// elle est vidée partout. Comportement de jeu normal ; seule cette propagation est spéciale.
+function syncPortes(srcBoard){
+  srcBoard=mod(srcBoard==null?currentBoard:srcBoard);
+  for(const idx of PORTE_POSITIONS){
+    const src=boards[srcBoard][idx];
+    for(let f=0;f<NBOARDS;f++){
+      if(f===srcBoard) continue;
+      const cur=boards[f][idx];
+      if(!src){ if(cur){ if(cur.mesh)removeDomino(cur.mesh); boards[f][idx]=null; } continue; }
+      // (re)crée un mesh propre à cette face avec les valeurs de la source
+      if(cur&&cur.mesh) removeDomino(cur.mesh);
+      const mesh=createDominoMesh(src.face1,src.face2,src.state,src.regress,src.rotation||0);
+      mesh.visible=false; addDomino(mesh,f);
+      boards[f][idx]={ state:src.state,state1:src.state1,state2:src.state2,
+        face1:src.face1,face2:src.face2,rotation:src.rotation||0,
+        regress:!!src.regress,target:!!src.target,mesh,face:f };
+    }
+  }
 }
 
 // ════════════════════════════════════════════
@@ -589,6 +685,7 @@ function snapshotState(){
 function pushHistory(){ history.push(snapshotState()); updateUndoBtn(); }
 function restoreState(snap){
   // purge tous les meshes existants
+  if(lockedPiece&&lockedPiece.mesh){ if(lockedPiece.mesh.parent)lockedPiece.mesh.parent.remove(lockedPiece.mesh); lockedPiece=null; lockFloatBase=null; }
   boards.forEach(arr=>arr.forEach(p=>{ if(p&&p.mesh)removeDomino(p.mesh); }));
   currentBoard=snap.currentBoard;
   boards=snap.boards.map((arr,f)=>arr.map(d=>{
@@ -854,8 +951,71 @@ function pieceAt(cx,cy){ const r=canvas.getBoundingClientRect();
 // convertit un déplacement pixel en déplacement monde approx (échelle plan de tête)
 function pxToWorld(px){ const r=canvas.getBoundingClientRect(); return (px/r.width)*FACE_W; }
 
+// ─── TRANSFERT INTER-PLATEAUX (LONG PRESS) ───────────────────────────────────
+//  Long press sur un domino → il se VERROUILLE et FLOTTE (attaché à la scène, fixe
+//  devant la caméra). On navigue alors vers un autre plateau (swipe/flèches/dots).
+//  Un TAP le DÉPOSE sur le plateau courant à la case visée (si libre) → transfert.
+//  Les cases-portes ne sont pas verrouillables (leur partage est déjà géré par sync).
+const LONGPRESS_MS=320;
+let pressTimer=null, lockFloatBase=null;
+
+// case (col,row) du plateau courant sous un point écran (raycast sur le plan de grille)
+function cellAt(cx,cy){
+  const r=canvas.getBoundingClientRect();
+  mouseV.x=((cx-r.left)/r.width)*2-1; mouseV.y=-((cy-r.top)/r.height)*2+1; raycaster.setFromCamera(mouseV,camera);
+  const g=gridMeshes[currentBoard]; if(!g) return null;
+  const hit=raycaster.intersectObject(g,false); if(!hit.length) return null;
+  const lp=g.worldToLocal(hit[0].point.clone());
+  const col=Math.round(lp.x/CELL_W+(COLS-1)/2);
+  const row=Math.round((ROWS-1)/2-lp.y/CELL_W);
+  if(col<0||col>=COLS||row<0||row>=ROWS) return null;
+  return {col,row,idx:row*COLS+col};
+}
+
+function lockPiece(p){
+  if(!p||!p.mesh||lockedPiece||busy||isAnimating||swapAnim||rotAnim)return;
+  const i=curBoard().indexOf(p); if(i<0)return;
+  if(isPorteIdx(i)||p.target)return;                 // porte/cible : non transférables
+  pushHistory();
+  curBoard()[i]=null;                                // quitte logiquement son plateau
+  lockedPiece=p; p.locked=true;
+  scene.attach(p.mesh);                              // passe en scene-space (flotte, fixe à l'écran)
+  // pose devant la caméra, plein cadre
+  const fz=camera.position.z-3.0;
+  lockFloatBase={z:fz};
+  p.mesh.position.set(0,0,fz);
+  p.mesh.quaternion.identity();
+  p.mesh.scale.set(1.12,1.12,1.12);
+  assignFaces();
+  showToast('Verrouillé · navigue puis tape pour déposer');
+}
+function dropPiece(cx,cy){
+  const p=lockedPiece; if(!p)return;
+  const c=cellAt(cx,cy);
+  let idx=c?c.idx:LANDING_IDX;
+  const head=curBoard();
+  // case occupée / porte / cible → cherche la case libre la plus proche
+  if(head[idx]||isPorteIdx(idx)){
+    let best=-1,bd=Infinity; const tc=idx%COLS,tr=Math.floor(idx/COLS);
+    for(let k=0;k<TOTAL;k++){ if(head[k]||isPorteIdx(k))continue;
+      const d=Math.abs(k%COLS-tc)+Math.abs(Math.floor(k/COLS)-tr); if(d<bd){bd=d;best=k;} }
+    if(best<0){ showToast('Plateau plein'); return; }   // rien de libre : on garde flottant
+    idx=best;
+  }
+  // ré-attache au plateau courant et pose
+  cubeGroup.attach(p.mesh);
+  if(p.mesh.parent!==faceGroups[currentBoard]) faceGroups[currentBoard].attach(p.mesh);
+  p.mesh.scale.set(1,1,1); p.locked=false; p.face=currentBoard;
+  head[idx]=p; lockedPiece=null; lockFloatBase=null;
+  placePiece(p); assignFaces(); updateUI();
+  showToast('Déposé sur plateau '+(currentBoard+1));
+  setTimeout(checkFusions,80);
+}
+
 let downX=0,downY=0,downT=0,moved=false;
 canvas.addEventListener('pointerdown',e=>{
+  // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
+  if(lockedPiece){ downX=e.clientX; downY=e.clientY; downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
   if(isAnimating||swapAnim||migrating)return;
   if(busy && !rotAnim)return;
@@ -865,13 +1025,21 @@ canvas.addEventListener('pointerdown',e=>{
   dragging=true; dragAxis=null;
   const i=curBoard().indexOf(dragPiece); dragRow=rowOf(i); dragCol=colOf(i);
   canvas.setPointerCapture(e.pointerId);
+  // LONG PRESS : armer le verrouillage (annulé dès qu'on bouge ou qu'on relâche tôt)
+  const tgt=dragPiece;
+  if(!rotAnim && !isPorteIdx(i) && !tgt.target){
+    clearTimeout(pressTimer);
+    pressTimer=setTimeout(()=>{ if(dragging&&!moved&&dragPiece===tgt){ dragging=false; dragAxis=null; lockPiece(tgt); dragPiece=null; } }, LONGPRESS_MS);
+  }
 });
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
   const dx=e.clientX-downX, dy=e.clientY-downY;
+  if(Math.abs(dx)>8||Math.abs(dy)>8){ moved=true; clearTimeout(pressTimer); }
+  if(lockedPiece) return;   // pièce flottante : pas de slide ; le swipe est traité au pointerup (nav)
   if(dragAxis===null){
     if(rotAnim) return;   // rotation en cours : on n'initie pas de glissement (seul le tap empile)
-    if(Math.abs(dx)>8||Math.abs(dy)>8){ moved=true;
+    if(Math.abs(dx)>8||Math.abs(dy)>8){
       dragAxis=Math.abs(dx)>Math.abs(dy)?'horizontal':'vertical';
       startSlide(dragAxis,dragRow,dragCol);
     } else return;
@@ -880,10 +1048,17 @@ canvas.addEventListener('pointermove',e=>{
   else applySlide(pxToWorld(dy));
 });
 canvas.addEventListener('pointerup',e=>{
+  clearTimeout(pressTimer);
   if(!dragging){ return; }
   dragging=false;
   const dx=e.clientX-downX, dy=e.clientY-downY, dt=Date.now()-downT;
   const dist=Math.hypot(dx,dy);
+  // ── PIÈCE FLOTTANTE (transfert) : swipe horizontal = nav plateau ; tap = dépose ──
+  if(lockedPiece){
+    if(dist>=15){ if(Math.abs(dx)>=Math.abs(dy)){ dx>0?navRight():navLeft(); } }
+    else { dropPiece(e.clientX,e.clientY); }
+    dragPiece=null; dragAxis=null; return;
+  }
   if(!moved && dist<8 && dt<260 && dragPiece){
     // TAP → rotation selon moitié gauche/droite du domino
     const sx=screenXOf(dragPiece.mesh);
@@ -893,7 +1068,7 @@ canvas.addEventListener('pointerup',e=>{
   if(dragAxis){ commitSlide(); }
   dragPiece=null;
 });
-canvas.addEventListener('pointercancel',()=>{ dragging=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; } dragPiece=null; });
+canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); dragging=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; } dragPiece=null; });
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
   const sp=wp.clone().project(camera); const r=canvas.getBoundingClientRect(); return r.left+(sp.x*0.5+0.5)*r.width; }
 
@@ -912,6 +1087,15 @@ document.getElementById('medBtn').addEventListener('click',function(){
 updateUndoBtn();
 const dotsEl=document.getElementById('navDots');
 for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>{ if(i!==mod(currentBoard)&&!busy&&!isAnimating){ if(mod(i-currentBoard)===NBOARDS-1)navLeft(); else navRight(); } }); dotsEl.appendChild(d); }
+// SWIPE sur la barre de points : geste horizontal = changer de plateau (gauche/droite).
+let dotDownX=null, dotMoved=false;
+dotsEl.addEventListener('pointerdown',e=>{ dotDownX=e.clientX; dotMoved=false; dotsEl.setPointerCapture(e.pointerId); });
+dotsEl.addEventListener('pointermove',e=>{ if(dotDownX==null)return; if(Math.abs(e.clientX-dotDownX)>24){ dotMoved=true; } });
+dotsEl.addEventListener('pointerup',e=>{
+  if(dotDownX==null)return; const dx=e.clientX-dotDownX; dotDownX=null;
+  if(dotMoved && Math.abs(dx)>=24){ dx>0?navRight():navLeft(); e.stopPropagation(); }
+});
+dotsEl.addEventListener('pointercancel',()=>{ dotDownX=null; });
 
 // ════════════════════════════════════════════
 //  FUSION — portée du V4 : faces exposées qui se touchent, identiques (icône+état)
@@ -927,6 +1111,8 @@ function checkFusions(){
     if(!_fuseScheduled){ _fuseScheduled=true; setTimeout(()=>{ _fuseScheduled=false; checkFusions(); },120); }
     return;
   }
+  // PORTE : propage l'état courant (suite à slide / rotation / fusion) sur tous les plateaux.
+  if(!lockedPiece) syncPortes(currentBoard);
   const d=curBoard();
   // RÉGRESSEUR (priorité sur la fusion montante) : un domino-outil "regress" en contact icône
   // avec une pièce d'état ≥ silver la fait DESCENDRE d'un cran et se consomme. Sans condition
@@ -1530,6 +1716,14 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   gridMeshes.forEach(g=>{ const f=g.userData.face;
     g.visible = (f===currentBoard)||(isAnimating&&f===targetBoard);
     g.position.set(0,0,0); g.material.opacity=0.5; });
+  // PIÈCE FLOTTANTE (transfert) : reste fixe devant la caméra, en sus du cube qui tourne.
+  if(lockedPiece&&lockedPiece.mesh){
+    const m=lockedPiece.mesh; m.visible=true;
+    const fz=(lockFloatBase?lockFloatBase.z:camera.position.z-3.0);
+    m.position.set(0,0,fz); m.quaternion.identity();
+    const pulse=1.12+Math.sin(t*4)*0.03; m.scale.set(pulse,pulse,pulse);
+    const ud=m.userData; if(ud&&ud.edgeLines){ ud.edgeLines.material.opacity=0.85; ud.faceMesh.material.opacity=1; }
+  }
   renderer.render(scene,camera);
 }
 buildBoards(); assignFaces(); updateUI(); animate();
