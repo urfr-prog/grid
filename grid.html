@@ -100,6 +100,20 @@
      lieu de casser. Rare, placée tard dans la pile : après les épreuves, le don.
 
   ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v35 : BARRE DE PORTES TOUJOURS PLEINE. Les 3 cases-portes (idx 21,22,23) restent
+        remplies : quand l'une se vide (fusion / twin / migration), refillPortes() aspire
+        dans SA COLONNE le domino non-porte le plus proche (dessus ou bas, ex-aequo → bas).
+        Le segment porte→source glisse d'un cran vers la porte (tapis-roulant vertical local) ;
+        ne franchit jamais une autre porte ni la cible. Appelé en tête de checkFusions AVANT
+        syncPortes (on comble puis on propage entre plateaux). Colonne vide → porte reste vide.
+  v34 : REFONTE ERGONOMIE PORTRAIT (aucune règle de jeu touchée). La nav plateau
+        QUITTE le bas encombré pour une BARRE HAUTE large (chevrons ‹ › + dots, swipe
+        sur toute la barre, cible élargie). Boutons undo + médianes GROUPÉS bas-droite
+        dans le rayon du pouce. fitCamera réserve topPx/botPx et RECENTRE la grille
+        (offset Y caméra) dans la bande utile — la grille ne passe plus sous les overlays.
+        Pièce flottante (transfert) suit camera.position.y. Seuils détendus pour le pouce :
+        slide 8→10 px, tap dist<12 / dt<300 ms. Haptique (navigator.vibrate 18 ms) au
+        verrouillage long-press. Swipe-sur-vide CONSERVÉ comme raccourci.
   v32 : MULTIPLATEAU (4) + PORTE PARTAGÉE + TRANSFERT LONG-PRESS. Reprise intégrale
         du moteur de jeu stack (glissement tapis-roulant, tap-rotation, fusion / twin /
         régresseur, graphisme et liserés inchangés). Enveloppe stereo : NBOARDS 1→4, les
@@ -215,7 +229,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v32 · Multiplateau (4) + Porte partagée + Transfert long-press</title>
+<title>ADAM Stack — v35 · Barre de portes auto-remplie (aspiration colonne) + ergonomie portrait</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -227,9 +241,15 @@
   #c { position:fixed; top:0; left:0; width:100vw; height:100vh; display:block; touch-action:none; cursor:default; }
   .info-bar { display:flex; gap:16px; margin-top:10px; font-size:0.65rem; color:rgba(180,180,200,0.5); letter-spacing:0.1em; }
   .info-bar span { color:rgba(220,220,235,0.8); }
-  .nav-dots { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 14px); left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:7px; z-index:200; padding:14px 40px; touch-action:none; cursor:grab; }
-  .nav-dot { width:8px; height:8px; border-radius:50%; background:rgba(34,211,238,0.15); transition:all 0.35s; cursor:pointer; }
-  .nav-dot.active { background:rgba(34,211,238,0.7); box-shadow:0 0 9px rgba(34,211,238,0.5); }
+  /* v34 : la nav plateau quitte le bas (zone pouce encombrée) pour une BARRE HAUTE large.
+     touch-action:none + grande surface tactile : swipe ‹ › ample, peu d'accidents. */
+  .nav-bar { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 8px); left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:10px; z-index:200; padding:11px 26px; touch-action:none; cursor:grab;
+    background:rgba(12,18,30,0.55); border:0.5px solid rgba(55,138,221,0.22); border-radius:22px; backdrop-filter:blur(5px); }
+  .nav-bar .chev { color:rgba(55,138,221,0.55); font-size:0.95rem; line-height:1; padding:0 2px; user-select:none; }
+  .nav-dots { display:flex; align-items:center; gap:9px; }
+  .nav-dot { width:8px; height:8px; border-radius:50%; background:rgba(34,211,238,0.18); transition:all 0.35s; cursor:pointer; }
+  .nav-dot.active { background:rgba(34,211,238,0.75); box-shadow:0 0 9px rgba(34,211,238,0.5); }
   .hint { margin-top:6px; font-size:0.5rem; color:rgba(180,180,200,0.3); letter-spacing:0.12em; }
   .ctrl-row { display:flex; gap:8px; margin-top:8px; }
   .dbtn { background:transparent; border:1px solid rgba(34,211,238,0.3); color:rgba(34,211,238,0.55);
@@ -240,7 +260,7 @@
   .legend-item { display:flex; align-items:center; gap:4px; padding:3px 8px; border-radius:6px;
     border:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); }
   .legend-dot { width:8px; height:8px; border-radius:50%; }
-  .goal-tag { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 14px); left:50%; transform:translateX(-50%);
+  .goal-tag { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 58px); left:50%; transform:translateX(-50%);
     display:none; align-items:center; gap:4px; z-index:210; padding:6px 12px; border-radius:9px;
     background:rgba(22,23,38,0.88); border:1px solid rgba(255,255,255,0.12); backdrop-filter:blur(4px);
     font-size:0.58rem; letter-spacing:0.14em; color:rgba(220,220,235,0.75); pointer-events:none; }
@@ -248,17 +268,18 @@
     background:rgba(22,23,38,0.95); border:1px solid rgba(255,255,255,0.07); border-radius:8px;
     padding:8px 16px; font-size:0.7rem; transition:transform 0.25s ease-out; z-index:300; pointer-events:none; }
   .toast.show { transform:translateX(-50%) translateY(0); }
-  .undo-btn { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); right:18px; z-index:200;
-    width:46px; height:46px; border-radius:50%; background:rgba(22,23,38,0.85);
-    border:1px solid rgba(34,211,238,0.3); color:rgba(34,211,238,0.7); font-size:1.35rem; line-height:1;
+  /* v34 : boutons groupés en bas-droite, dans le rayon naturel du pouce (portrait). */
+  .undo-btn { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 18px); right:18px; z-index:200;
+    width:48px; height:48px; border-radius:50%; background:rgba(22,23,38,0.85);
+    border:1px solid rgba(34,211,238,0.35); color:rgba(34,211,238,0.8); font-size:1.4rem; line-height:1;
     cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit;
     transition:all 0.2s; backdrop-filter:blur(4px); padding:0; }
   .undo-btn:hover { border-color:#22d3ee; color:#22d3ee; }
   .undo-btn:active { transform:scale(0.92); }
   .undo-btn:disabled { opacity:0.25; cursor:default; border-color:rgba(34,211,238,0.12); }
-  .opt-btn { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); right:74px; z-index:200;
-    width:46px; height:46px; border-radius:50%; background:rgba(22,23,38,0.85);
-    border:1px solid rgba(34,211,238,0.3); color:rgba(34,211,238,0.7); font-size:1.2rem; line-height:1;
+  .opt-btn { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 18px); right:76px; z-index:200;
+    width:44px; height:44px; border-radius:50%; background:rgba(22,23,38,0.7);
+    border:1px solid rgba(34,211,238,0.25); color:rgba(34,211,238,0.6); font-size:1.15rem; line-height:1;
     cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit;
     transition:all 0.2s; backdrop-filter:blur(4px); padding:0; }
   .opt-btn:hover { border-color:#22d3ee; color:#22d3ee; }
@@ -268,7 +289,7 @@
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div class="nav-dots" id="navDots"></div>
+  <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
   <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
   <button id="medBtn" class="opt-btn" aria-label="Médianes">▤</button>
   <div class="toast" id="toast"></div>
@@ -1081,6 +1102,7 @@ function lockPiece(p){
   const i=curBoard().indexOf(p); if(i<0)return;
   if(isPorteIdx(i)||p.target)return;                 // porte/cible : non transférables
   pushHistory();
+  if(navigator.vibrate)navigator.vibrate(18);          // v34 : feedback haptique transfert armé
   curBoard()[i]=null;                                // quitte logiquement son plateau
   lockedPiece=p; p.locked=true;
   scene.attach(p.mesh);                              // passe en scene-space (flotte, fixe à l'écran)
@@ -1146,11 +1168,11 @@ canvas.addEventListener('pointerdown',e=>{
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
   const dx=e.clientX-downX, dy=e.clientY-downY;
-  if(Math.abs(dx)>8||Math.abs(dy)>8){ moved=true; clearTimeout(pressTimer); }
+  if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
   if(lockedPiece) return;   // pièce flottante : pas de slide ; le swipe est traité au pointerup (nav)
   if(dragAxis===null){
     if(rotAnim) return;   // rotation en cours : on n'initie pas de glissement (seul le tap empile)
-    if(Math.abs(dx)>8||Math.abs(dy)>8){
+    if(Math.abs(dx)>10||Math.abs(dy)>10){
       dragAxis=Math.abs(dx)>Math.abs(dy)?'horizontal':'vertical';
       startSlide(dragAxis,dragRow,dragCol);
     } else return;
@@ -1176,7 +1198,7 @@ canvas.addEventListener('pointerup',e=>{
     else { dropPiece(e.clientX,e.clientY); }
     dragPiece=null; dragAxis=null; return;
   }
-  if(!moved && dist<8 && dt<260 && dragPiece){
+  if(!moved && dist<12 && dt<300 && dragPiece){
     // TAP → rotation selon moitié gauche/droite du domino
     const sx=screenXOf(dragPiece.mesh);
     rotatePiece(curBoard().indexOf(dragPiece), e.clientX>sx);
@@ -1204,15 +1226,18 @@ document.getElementById('medBtn').addEventListener('click',function(){
 updateUndoBtn();
 const dotsEl=document.getElementById('navDots');
 for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>{ if(i!==mod(currentBoard)&&!busy&&!isAnimating){ if(mod(i-currentBoard)===NBOARDS-1)navLeft(); else navRight(); } }); dotsEl.appendChild(d); }
-// SWIPE sur la barre de points : geste horizontal = changer de plateau (gauche/droite).
+// SWIPE sur la BARRE entière (v34 : cible élargie, chevrons inclus) = changer de plateau.
+const navBarEl=document.getElementById('navBar');
 let dotDownX=null, dotMoved=false;
-dotsEl.addEventListener('pointerdown',e=>{ dotDownX=e.clientX; dotMoved=false; dotsEl.setPointerCapture(e.pointerId); });
-dotsEl.addEventListener('pointermove',e=>{ if(dotDownX==null)return; if(Math.abs(e.clientX-dotDownX)>24){ dotMoved=true; } });
-dotsEl.addEventListener('pointerup',e=>{
+navBarEl.addEventListener('pointerdown',e=>{ dotDownX=e.clientX; dotMoved=false; navBarEl.setPointerCapture(e.pointerId); });
+navBarEl.addEventListener('pointermove',e=>{ if(dotDownX==null)return; if(Math.abs(e.clientX-dotDownX)>20){ dotMoved=true; } });
+navBarEl.addEventListener('pointerup',e=>{
   if(dotDownX==null)return; const dx=e.clientX-dotDownX; dotDownX=null;
-  if(dotMoved && Math.abs(dx)>=24){ dx>0?navRight():navLeft(); e.stopPropagation(); }
+  if(dotMoved && Math.abs(dx)>=20){ if(!busy&&!isAnimating){ dx>0?navRight():navLeft(); } e.stopPropagation(); }
 });
-dotsEl.addEventListener('pointercancel',()=>{ dotDownX=null; });
+navBarEl.addEventListener('pointercancel',()=>{ dotDownX=null; });
+// chevrons : tap = nav d'un cran
+navBarEl.querySelectorAll('.chev').forEach((c,idx)=>c.addEventListener('click',e=>{ if(busy||isAnimating)return; idx===0?navLeft():navRight(); e.stopPropagation(); }));
 
 // ════════════════════════════════════════════
 //  FUSION — portée du V4 : faces exposées qui se touchent, identiques (icône+état)
@@ -1228,8 +1253,9 @@ function checkFusions(){
     if(!_fuseScheduled){ _fuseScheduled=true; setTimeout(()=>{ _fuseScheduled=false; checkFusions(); },120); }
     return;
   }
-  // PORTE : propage l'état courant (suite à slide / rotation / fusion) sur tous les plateaux.
-  if(!lockedPiece) syncPortes(currentBoard);
+  // PORTE : on comble d'abord les cases-portes vides (aspiration colonne), PUIS on propage
+  // l'état courant (suite à slide / rotation / fusion) sur tous les plateaux.
+  if(!lockedPiece){ refillPortes(); syncPortes(currentBoard); }
   const d=curBoard();
   // RÉGRESSEUR (priorité sur la fusion montante) : un domino-outil "regress" en contact icône
   // avec une pièce d'état ≥ silver la fait DESCENDRE d'un cran et se consomme. Sans condition
@@ -1304,6 +1330,41 @@ function corridorEmpty(d,i1,i2,horizontal){
 //   • fusion montante : aucune des deux n'est régresseur (l'état n'importe pas — règle 1A) ;
 //   • régression : exactement UN régresseur, l'autre (la cible) d'état ≥ silver.
 // Le régresseur est donc happé exactement comme une pièce d'aimant ordinaire.
+// ════════════════════════════════════════════
+//  v35 : AIMANTATION DE LA BARRE DE PORTES — les cases-portes restent TOUJOURS pleines.
+//  Quand une porte (idx ∈ PORTE_POSITIONS) se vide (fusion / twin / migration), on aspire
+//  dans sa COLONNE le domino non-porte le PLUS PROCHE (dessus OU bas, ex-aequo → bas). Tout
+//  le segment entre la source et la porte glisse d'un cran vers la porte (effet tapis-roulant
+//  vertical local). N'aspire jamais une autre porte ni la cible. Si la colonne n'a aucun
+//  domino libre, la porte reste vide (rien à aspirer).
+function refillPortes(){
+  const d=curBoard();
+  for(const pIdx of PORTE_POSITIONS){
+    if(d[pIdx]) continue;                       // porte déjà pleine
+    const col=colOf(pIdx), prow=rowOf(pIdx);
+    let bestRow=-1, bestDist=ROWS+1, bestDir=0;
+    for(let r=0;r<ROWS;r++){ if(r===prow) continue;
+      const i=getIdx(col,r); const p=d[i];
+      if(!p||isPorteIdx(i)||p.target) continue; // ignore portes voisines et cible
+      // le segment porte→source ne doit franchir NI une autre porte NI une cible
+      const lo=Math.min(prow,r), hi=Math.max(prow,r); let blocked=false;
+      for(let k=lo;k<=hi;k++){ if(k===prow||k===r)continue; const q=d[getIdx(col,k)];
+        if(isPorteIdx(getIdx(col,k))||(q&&q.target)){ blocked=true; break; } }
+      if(blocked) continue;
+      const dist=Math.abs(r-prow);
+      if(dist<bestDist || (dist===bestDist && r>prow)){ bestDist=dist; bestRow=r; bestDir=(r>prow?1:-1); }
+    }
+    if(bestRow<0) continue;                     // colonne sans domino libre : porte reste vide
+    // glisse le segment [porte → source] d'un cran vers la porte (les cases internes suivent)
+    if(bestDir>0){ for(let r=prow;r<bestRow;r++){ d[getIdx(col,r)]=d[getIdx(col,r+1)]; } }
+    else { for(let r=prow;r>bestRow;r--){ d[getIdx(col,r)]=d[getIdx(col,r-1)]; } }
+    d[getIdx(col,bestRow)]=null;                // l'ancienne source est désormais vide
+    // repositionne les meshes du segment touché
+    const lo=Math.min(prow,bestRow), hi=Math.max(prow,bestRow);
+    for(let r=lo;r<=hi;r++){ const p=d[getIdx(col,r)]; if(p) placePiece(p); }
+  }
+}
+// ════════════════════════════════════════════
 function magnetMatch(a,dirA,b,dirB){
   const fa=getExposedFace(a,dirA), fb=getExposedFace(b,dirB);
   if(!fa||!fb||fa!==fb) return false;                 // icônes au contact doivent coïncider
@@ -1777,9 +1838,17 @@ function fitCamera(){
   const sidePx=10;                                         // interstice latéral souhaité
   const marginW=(w+2*sidePx)/w;                            // largeur cible = écran - 2*interstice
   const needW=(FACE_W*marginW)/(2*Math.tan(vFOV/2)*aspect);// distance pour remplir la largeur
-  const needH=(FACE_H*1.0)/(2*Math.tan(vFOV/2));           // garde-fou hauteur (ne pas couper)
+  // v34 : zones réservées en haut (barre nav) et en bas (boutons pouce). La grille se cale
+  // dans la bande centrale restante ; on recentre la caméra sur le milieu de cette bande.
+  const topPx=58, botPx=92;                                // hauteurs réservées (CSS ci-dessus)
+  const usableH=Math.max(1,h-topPx-botPx);
+  const needH=(FACE_H*(h/usableH))/(2*Math.tan(vFOV/2));   // garde-fou hauteur sur la zone utile
   camera.position.z=Math.max(needW,needH);
-  camera.position.set(0,0,camera.position.z); camera.lookAt(0,0,0);
+  // décalage vertical : le centre de la zone utile n'est pas le centre écran.
+  const centerShiftPx=(botPx-topPx)/2;                     // >0 si plus réservé en bas → viser plus haut
+  const worldPerPx=(2*camera.position.z*Math.tan(vFOV/2))/h;
+  const offY=centerShiftPx*worldPerPx;
+  camera.position.set(0,offY,camera.position.z); camera.lookAt(0,offY,0);
   camera.updateProjectionMatrix();
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); fitCamera();
@@ -1839,7 +1908,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   if(lockedPiece&&lockedPiece.mesh){
     const m=lockedPiece.mesh; m.visible=true;
     const fz=(lockFloatBase?lockFloatBase.z:camera.position.z-3.0);
-    m.position.set(0,0,fz); m.quaternion.identity();
+    m.position.set(0,camera.position.y,fz); m.quaternion.identity();
     const pulse=1.12+Math.sin(t*4)*0.03; m.scale.set(pulse,pulse,pulse);
     const ud=m.userData; if(ud&&ud.edgeLines){ ud.edgeLines.material.opacity=0.85; ud.faceMesh.material.opacity=1; }
   }
