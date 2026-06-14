@@ -100,6 +100,18 @@
      lieu de casser. Rare, placée tard dans la pile : après les épreuves, le don.
 
   ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v40 : ZOOM DU GLISSEMENT — CORRECTION (plus de dézoom brutal).
+        • Problème réel : en glissant la rangée de portes, l'emprise passe de 3 à 4/5
+          colonnes mais le zoom restait calé sur 3 → une colonne sortait du cadre. La v39
+          répondait par un dézoom plein-cadre brutal : pas voulu.
+        • FIX : pendant le glissement, refreshZoomSlide recalcule le zoom adaptatif normal
+          sur l'étendue LOGIQUE PRÉDITE au nombre de crans courant (on simule la rangée/
+          colonne décalée, sans tenir compte des positions wrappées qui feraient osciller le
+          zoom). Le zoom principal suit donc l'étendue par paliers (3→4→5) et se plafonne au
+          plein cadre (baseFitZ), qui montre déjà les 5 colonnes → rien ne sort, sans à-coup.
+          commitSlide/pointercancel recalent sur l'état logique final (refreshZoom).
+        • Suppression du flag de dézoom brutal v39 dans le lissage caméra ; la cloche de
+          recul ne concerne plus que la ROTATION cube.
   v39 : DÉZOOM AU GLISSEMENT + BARRE SANS ANIMATION + PORTES BLANCHES.
         • Le dézoom anti-débordement ne couvrait que la ROTATION cube (v38). Désormais il
           couvre aussi le GLISSEMENT tactile d'une pièce : flag `sliding` (vrai entre
@@ -293,7 +305,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v39 · Dézoom au glissement + barre sans animation + portes blanches</title>
+<title>ADAM Stack — v40 · Zoom du glissement adaptatif (suit l'étendue 3→4→5 colonnes)</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -1047,6 +1059,30 @@ function applySlide(off){
       m.p.mesh.position.y=y;
     });
   }
+  refreshZoomSlide();   // v40 : le zoom suit l'étendue PRÉDITE au cran courant (3→4→5 col)
+}
+// v40 : zoom pendant le glissement = étendue logique PRÉDITE au nombre de crans courant
+// (et non les positions wrappées, qui feraient osciller le zoom). On simule la rangée/colonne
+// après application des crans et on mesure son emprise ; le zoom principal s'y adapte par palier.
+function refreshZoomSlide(){
+  const d=curBoard(); if(!d) return;
+  const steps=Math.round(dragOff/CELL);
+  // étendue de TOUT le plateau, en remplaçant la ligne/colonne glissée par sa version décalée.
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,n=0;
+  const acc=(col,row)=>{ const {x,y}=cellToLocal(col,row);
+    minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++; };
+  for(let i=0;i<TOTAL;i++){ const p=d[i]; if(!p)continue; let col=colOf(i),row=rowOf(i);
+    if(dragAxis==='horizontal' && row===dragRow){ col=((col+steps)%COLS+COLS)%COLS; }
+    else if(dragAxis==='vertical' && col===dragCol){ row=((row+steps)%ROWS+ROWS)%ROWS; }
+    acc(col,row);
+  }
+  if(n===0)return;
+  const padW=(maxX-minX)+2.0*CELL_W, padH=(maxY-minY)+2.0*CELL_W;
+  const aspect=window.innerWidth/window.innerHeight;
+  const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
+  const needZh=padH/(2*Math.tan(vFOVcache/2));
+  targetCamZ=Math.min(baseFitZ, Math.max(baseFitZ*0.45, Math.max(needZw,needZh)));
+  const cY=(minY+maxY)/2; targetCamY=baseFitY + cY*0.6;
 }
 
 // fin de glissement : calcule le nombre de crans et réécrit la grille logique (wrap-around)
@@ -1077,7 +1113,8 @@ function commitSlide(){
     placePiece(p,0); const to=p.mesh.position.clone();
     if(!from.equals(to)){ pairs.push({mesh:p.mesh,from,to}); p.mesh.position.copy(from); }
   });
-  dragMembers=[]; dragAxis=null; sliding=false;   // v39 : fin du glissement → retour au zoom serré
+  dragMembers=[]; dragAxis=null; sliding=false;
+  refreshZoom();   // v40 : cale le zoom sur l'étendue logique finale après le slide
   if(!pairs.length){ busy=false; setTimeout(checkFusions,60); return; }
   busy=true;
   swapAnim={pairs,t:0,after:()=>{ busy=false; setTimeout(checkFusions,80); }};
@@ -1265,7 +1302,7 @@ canvas.addEventListener('pointerup',e=>{
   if(dragAxis){ commitSlide(); }
   dragPiece=null;
 });
-canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; } dragPiece=null; });
+canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; refreshZoom(); } dragPiece=null; });
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
   const sp=wp.clone().project(camera); const r=canvas.getBoundingClientRect(); return r.left+(sp.x*0.5+0.5)*r.width; }
 
@@ -2028,33 +2065,27 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     else { ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0xd2d2dc); }
     ud.edgeLines.material.opacity=0.5; ud.faceMesh.material.opacity=1; });
   // v39 : halo de porte (réacteurs bleu clair) supprimé — plus aucune animation de barre.
-  // v38 : CAMÉRA — anti-débordement pendant la rotation. Le contenu, pivotant autour de
+  // v38 : CAMÉRA — anti-débordement pendant la ROTATION. Le contenu, pivotant autour de
   // l'axe décalé (col3/4), balaie une largeur supérieure au cadrage serré : sans correction,
   // un bord de grille sort de l'écran en milieu de rotation. On recule donc transitoirement
   // en Z selon une CLOCHE (sin) : zoom serré au départ → recul au milieu de l'arc → zoom serré
   // à l'arrivée. Une seule courbe continue, donc le geste reste "en un temps" (pas d'à-coup).
-  // v39 : même anti-débordement pendant un GLISSEMENT de pièce (slide). Quand on tire une
-  // rangée/colonne et que le plateau est en zoom serré, la pièce suivait le doigt hors écran.
-  // Tant que sliding est vrai, on vise un Z assez large pour montrer toute l'emprise glissée.
-  const aspect=window.innerWidth/window.innerHeight;
-  const halfSweep=(FACE_W/2+Math.abs(PIVOT_X))+0.4*CELL_W;   // demi-largeur à couvrir
-  const zSafe=halfSweep/(Math.tan(vFOVcache/2)*aspect);
+  // v40 : le glissement n'utilise PLUS de dézoom brutal. À la place, refreshZoom est recalculé
+  // en continu sur les positions VISUELLES réelles pendant le slide (voir applySlide) → le zoom
+  // principal SUIT l'étendue qui passe de 3 à 4/5 colonnes. Ici, simple lissage vers targetCamZ.
   let zGoal=targetCamZ;
-  if(sliding){
-    zGoal=Math.max(targetCamZ, zSafe, baseFitZ);    // plein cadre pendant le glissement
-  } else if(isAnimating){
-    // progression de la rotation : 0 au départ, 1 à l'arrivée (écart angulaire normalisé).
+  if(isAnimating){
+    const aspect=window.innerWidth/window.innerHeight;
+    const halfSweep=(FACE_W/2+Math.abs(PIVOT_X))+0.4*CELL_W;
+    const zSafe=halfSweep/(Math.tan(vFOVcache/2)*aspect);
     const dotv=Math.min(1,Math.abs(cubeGroup.quaternion.dot(targetQuat)));
     const angLeft=2*Math.acos(dotv);                  // radians restants (≈π/2 au départ)
     const prog=1-Math.min(1,angLeft/(Math.PI/2));     // 0→1
     const bell=Math.sin(Math.min(1,Math.max(0,prog))*Math.PI); // 0 aux bords, 1 au milieu
-    // base = zoom du plateau d'arrivée ; on ajoute UNIQUEMENT le surplus nécessaire à l'arc,
-    // modulé par la cloche → départ et arrivée au zoom serré, recul transitoire au milieu.
     zGoal=targetCamZ + bell*Math.max(0, zSafe-targetCamZ);
   }
   // v37 : ZOOM EN UN SEUL TEMPS. La cible (targetCamZ/Y) est posée sur le plateau d'ARRIVÉE
-  // dès le lancement de la nav → la caméra tend vers elle PENDANT la rotation : zoom et
-  // rotation forment un geste unique. X reste sur l'axe décalé -PIVOT_X.
+  // dès le lancement de la nav → la caméra tend vers elle PENDANT la rotation. X sur -PIVOT_X.
   camera.position.z += (zGoal-camera.position.z)*0.12;
   camera.position.y += (targetCamY-camera.position.y)*0.08;
   camera.position.x += (-PIVOT_X-camera.position.x)*0.12;
