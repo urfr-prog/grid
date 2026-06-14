@@ -100,6 +100,45 @@
      lieu de casser. Rare, placée tard dans la pile : après les épreuves, le don.
 
   ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v36 : NIVEAUX ALLÉGÉS + AXE DÉCALÉ + ZOOM ADAPTATIF (repris de stereo/K5).
+        • Chaque plateau passe à ~6 dominos (3 portes 21/22/23 + 3 pièces libres) ;
+          grille 5×9 conservée, juste plus aérée. Aucun match au départ (inchangé).
+        • AXE DE ROTATION du cube déplacé du centre vers ENTRE COL 3 ET COL 4
+          (PIVOT_COL 3.5 → PIVOT_X 1.5). Chaque face = mount (azimut tangent au
+          cylindre) + sous-groupe contenu translaté de -PIVOT_X : la colonne-pivot
+          retombe sur l'axe Y. Recentrage écran par offset caméra X = -PIVOT_X.
+          Picking inchangé (raycast sur meshes réels). Proxies-portes et beams
+          décalés de -PIVOT_X pour coïncider.
+        • ZOOM : fitCamera mémorise le plein cadre (baseFitZ/baseFitY) ; refreshZoom
+          resserre Z/Y sur l'étendue réelle des dominos du plateau courant (moins de
+          pièces → plus près, borne basse 0.45*plein). Lissé dans animate (0.08, façon
+          targetCamZ K5). Appelé à onRotationComplete + en tête de checkFusions. X tenu
+          sur -PIVOT_X. Plein cadre retenu pendant la rotation cube.
+        • FIX conflit refill/aimant (aller-retour sans fin d'un domino de la barre).
+          refillPortes ne s'exécute PLUS en tête de checkFusions mais EN FIN, à l'état
+          STABLE seulement (après tryMagnet, si aucun aimant n'a agi). Avant, le refill
+          rebouchait la porte que l'aimant venait de vider pour amener un partenaire →
+          l'aimant retentait → boucle. tryMagnet et refillPortes renvoient désormais un
+          booléen ; un refill qui aspire relance UNE passe (peut créer une fusion). La
+          propagation syncPortes reste à chaque passe.
+        • AUCUN MATCH AU DÉMARRAGE (garanti par simulation des 5 détecteurs). Pièces
+          libres en COL 0 / COL 4 seulement (hors colonnes-portes 1/2/3), jamais row 4
+          (rangée portes), faces de contact distinctes si même colonne. rot 0 partout →
+          pas de contact horizontal. Zéro fusion/twin/chaîne/régresseur/aimant initial.
+  v35 : BARRE DE PORTES TOUJOURS PLEINE. Les 3 cases-portes (idx 21,22,23) restent
+        remplies : quand l'une se vide (fusion / twin / migration), refillPortes() aspire
+        dans SA COLONNE le domino non-porte le plus proche (dessus ou bas, ex-aequo → bas).
+        Le segment porte→source glisse d'un cran vers la porte (tapis-roulant vertical local) ;
+        ne franchit jamais une autre porte ni la cible. Appelé en tête de checkFusions AVANT
+        syncPortes (on comble puis on propage entre plateaux). Colonne vide → porte reste vide.
+  v34 : REFONTE ERGONOMIE PORTRAIT (aucune règle de jeu touchée). La nav plateau
+        QUITTE le bas encombré pour une BARRE HAUTE large (chevrons ‹ › + dots, swipe
+        sur toute la barre, cible élargie). Boutons undo + médianes GROUPÉS bas-droite
+        dans le rayon du pouce. fitCamera réserve topPx/botPx et RECENTRE la grille
+        (offset Y caméra) dans la bande utile — la grille ne passe plus sous les overlays.
+        Pièce flottante (transfert) suit camera.position.y. Seuils détendus pour le pouce :
+        slide 8→10 px, tap dist<12 / dt<300 ms. Haptique (navigator.vibrate 18 ms) au
+        verrouillage long-press. Swipe-sur-vide CONSERVÉ comme raccourci.
   v32 : MULTIPLATEAU (4) + PORTE PARTAGÉE + TRANSFERT LONG-PRESS. Reprise intégrale
         du moteur de jeu stack (glissement tapis-roulant, tap-rotation, fusion / twin /
         régresseur, graphisme et liserés inchangés). Enveloppe stereo : NBOARDS 1→4, les
@@ -215,7 +254,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v32 · Multiplateau (4) + Porte partagée + Transfert long-press</title>
+<title>ADAM Stack — v36 · Niveaux allégés + axe de rotation col3/4 + zoom adaptatif</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -227,9 +266,15 @@
   #c { position:fixed; top:0; left:0; width:100vw; height:100vh; display:block; touch-action:none; cursor:default; }
   .info-bar { display:flex; gap:16px; margin-top:10px; font-size:0.65rem; color:rgba(180,180,200,0.5); letter-spacing:0.1em; }
   .info-bar span { color:rgba(220,220,235,0.8); }
-  .nav-dots { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 14px); left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:7px; z-index:200; padding:14px 40px; touch-action:none; cursor:grab; }
-  .nav-dot { width:8px; height:8px; border-radius:50%; background:rgba(34,211,238,0.15); transition:all 0.35s; cursor:pointer; }
-  .nav-dot.active { background:rgba(34,211,238,0.7); box-shadow:0 0 9px rgba(34,211,238,0.5); }
+  /* v34 : la nav plateau quitte le bas (zone pouce encombrée) pour une BARRE HAUTE large.
+     touch-action:none + grande surface tactile : swipe ‹ › ample, peu d'accidents. */
+  .nav-bar { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 8px); left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:10px; z-index:200; padding:11px 26px; touch-action:none; cursor:grab;
+    background:rgba(12,18,30,0.55); border:0.5px solid rgba(55,138,221,0.22); border-radius:22px; backdrop-filter:blur(5px); }
+  .nav-bar .chev { color:rgba(55,138,221,0.55); font-size:0.95rem; line-height:1; padding:0 2px; user-select:none; }
+  .nav-dots { display:flex; align-items:center; gap:9px; }
+  .nav-dot { width:8px; height:8px; border-radius:50%; background:rgba(34,211,238,0.18); transition:all 0.35s; cursor:pointer; }
+  .nav-dot.active { background:rgba(34,211,238,0.75); box-shadow:0 0 9px rgba(34,211,238,0.5); }
   .hint { margin-top:6px; font-size:0.5rem; color:rgba(180,180,200,0.3); letter-spacing:0.12em; }
   .ctrl-row { display:flex; gap:8px; margin-top:8px; }
   .dbtn { background:transparent; border:1px solid rgba(34,211,238,0.3); color:rgba(34,211,238,0.55);
@@ -240,25 +285,26 @@
   .legend-item { display:flex; align-items:center; gap:4px; padding:3px 8px; border-radius:6px;
     border:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); }
   .legend-dot { width:8px; height:8px; border-radius:50%; }
-  .goal-tag { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 14px); left:50%; transform:translateX(-50%);
+  .goal-tag { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 58px); left:50%; transform:translateX(-50%);
     display:none; align-items:center; gap:4px; z-index:210; padding:6px 12px; border-radius:9px;
     background:rgba(22,23,38,0.88); border:1px solid rgba(255,255,255,0.12); backdrop-filter:blur(4px);
     font-size:0.58rem; letter-spacing:0.14em; color:rgba(220,220,235,0.75); pointer-events:none; }
-  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(60px);
+  .toast { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 14px); left:50%; transform:translateX(-50%) translateY(-60px);
     background:rgba(22,23,38,0.95); border:1px solid rgba(255,255,255,0.07); border-radius:8px;
     padding:8px 16px; font-size:0.7rem; transition:transform 0.25s ease-out; z-index:300; pointer-events:none; }
   .toast.show { transform:translateX(-50%) translateY(0); }
-  .undo-btn { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); right:18px; z-index:200;
-    width:46px; height:46px; border-radius:50%; background:rgba(22,23,38,0.85);
-    border:1px solid rgba(34,211,238,0.3); color:rgba(34,211,238,0.7); font-size:1.35rem; line-height:1;
+  /* v34 : boutons groupés en bas-droite, dans le rayon naturel du pouce (portrait). */
+  .undo-btn { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 18px); right:18px; z-index:200;
+    width:48px; height:48px; border-radius:50%; background:rgba(22,23,38,0.85);
+    border:1px solid rgba(34,211,238,0.35); color:rgba(34,211,238,0.8); font-size:1.4rem; line-height:1;
     cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit;
     transition:all 0.2s; backdrop-filter:blur(4px); padding:0; }
   .undo-btn:hover { border-color:#22d3ee; color:#22d3ee; }
   .undo-btn:active { transform:scale(0.92); }
   .undo-btn:disabled { opacity:0.25; cursor:default; border-color:rgba(34,211,238,0.12); }
-  .opt-btn { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); right:74px; z-index:200;
-    width:46px; height:46px; border-radius:50%; background:rgba(22,23,38,0.85);
-    border:1px solid rgba(34,211,238,0.3); color:rgba(34,211,238,0.7); font-size:1.2rem; line-height:1;
+  .opt-btn { position:fixed; bottom:calc(env(safe-area-inset-bottom, 0px) + 18px); right:76px; z-index:200;
+    width:44px; height:44px; border-radius:50%; background:rgba(22,23,38,0.7);
+    border:1px solid rgba(34,211,238,0.25); color:rgba(34,211,238,0.6); font-size:1.15rem; line-height:1;
     cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit;
     transition:all 0.2s; backdrop-filter:blur(4px); padding:0; }
   .opt-btn:hover { border-color:#22d3ee; color:#22d3ee; }
@@ -268,7 +314,7 @@
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div class="nav-dots" id="navDots"></div>
+  <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
   <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
   <button id="medBtn" class="opt-btn" aria-label="Médianes">▤</button>
   <div class="toast" id="toast"></div>
@@ -492,40 +538,59 @@ const DEMO_LEVEL=[
 
 // Cases-portes : positions fixes partagées par tous les plateaux (idx grille 5×9).
 // idx 7 = col 2, row 1 (porte haute centrale). Multi-porte dès le départ : tableau.
-const PORTE_POSITIONS=[];
+const PORTE_POSITIONS=[21,22,23];
 function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
 
-// ── PLATEAU 1 — Fusion simple & aimant (la base, case-porte libre) ──
+// Motifs ARTY symétriques, centrés sur la rangée des PORTES (row4).
+// Toutes les pièces en portrait (rot 0) : le portrait n'expose d'icône qu'en haut/bas,
+// donc AUCUN contact horizontal possible. Les contacts verticaux sont réglés pour ne
+// jamais coïncider → AUCUN match (fusion/aimant/twin) au départ. Portes distinctes
+// (21/22/23) pour éviter tout twin entre elles.
+// v36 : NIVEAUX ALLÉGÉS — ~6 dominos par plateau (3 portes 21/22/23 + 3 pièces libres),
+// grille 5×9 conservée mais bien plus aérée.
+// GARANTIE "aucun match au démarrage" (vérifiée par simulation des 5 détecteurs : régresseur,
+// twin, chaîne, fusion simple, aimant V/H) :
+//  • Toutes les pièces sont en portrait (rot 0) → seules les faces HAUT/BAS existent, donc
+//    aucun contact ni aimant HORIZONTAL possible (faces gauche/droite nulles).
+//  • Les 3 pièces libres vivent UNIQUEMENT en COL 0 et COL 4 (jamais une colonne-porte 1/2/3)
+//    et JAMAIS sur la rangée des portes (row 4) → aucun contact/aimant/twin avec une porte.
+//  • Quand deux libres partagent une colonne, leurs faces de CONTACT vertical (bottom du haut
+//    vs top du bas) sont rendues DIFFÉRENTES → pas d'aimant vertical entre elles.
+// ── PLATEAU 1 ──
 const LEVEL_1=[
-  // pièces proches du centre (la rangée cosmic centrale est FIXE hors plateau, cf FIXED_COSMICS)
-  [16,'white','circle','line',0],
-  [18,'white','circle','line',0],
-  [26,'white','wave','line',0],
-  [28,'white','wave','line',0],
+  [5,'white','wave','chevron',0],
+  [9,'silver','chevron','circle',0],
+  [34,'gold','wave','line',0],
+  [21,'cosmic','circle','wave',0],   // PORTE
+  [22,'cosmic','wave','circle',0],   // PORTE
+  [23,'cosmic','line','chevron',0],  // PORTE
 ];
-// ── PLATEAU 2 — Twin absorption (miroirs parfaits) ──
+// ── PLATEAU 2 ──
 const LEVEL_2=[
-  [16,'silver','circle','wave',0],
-  [18,'silver','circle','wave',0],
-  [26,'white','line','chevron',0],
-  [28,'white','line','chevron',0],
-  [12,'gold','wave','circle',0],
+  [10,'white','line','chevron',0],
+  [14,'silver','circle','wave',0],
+  [35,'white','line','circle',0],
+  [21,'cosmic','chevron','wave',0],  // PORTE
+  [22,'cosmic','wave','circle',0],   // PORTE
+  [23,'cosmic','line','chevron',0],  // PORTE
 ];
-// ── PLATEAU 3 — Régresseur (descendre un état) ──
+// ── PLATEAU 3 — un régresseur ──
 const LEVEL_3=[
-  [16,'gold','circle','line',0],
-  [18,'white','line','circle',0,1], // régresseur (6e champ=1)
-  [27,'silver','circle','line',0],
-  [11,'white','wave','chevron',0],
-  [13,'white','wave','chevron',0],
+  [5,'white','circle','wave',0],
+  [9,'silver','wave','chevron',0,1], // régresseur
+  [34,'gold','line','circle',0],
+  [21,'cosmic','chevron','wave',0],  // PORTE
+  [22,'cosmic','wave','circle',0],   // PORTE
+  [23,'cosmic','line','chevron',0],  // PORTE
 ];
-// ── PLATEAU 4 — Paliers d'état (construire pour fusionner) ──
+// ── PLATEAU 4 ──
 const LEVEL_4=[
-  [16,'white','circle','wave',0],
-  [18,'white','circle','wave',0],
-  [26,'silver','line','chevron',0],
-  [28,'silver','line','chevron',0],
-  [12,'gold','circle','line',0],
+  [10,'white','circle','line',0],
+  [14,'silver','wave','chevron',0],
+  [35,'white','chevron','wave',0],
+  [21,'cosmic','chevron','wave',0],  // PORTE
+  [22,'cosmic','wave','circle',0],   // PORTE
+  [23,'cosmic','line','chevron',0],  // PORTE
 ];
 
 const DEMOS=[ LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4 ];
@@ -561,15 +626,27 @@ const FACE_ROT=[0,Math.PI/2,Math.PI,-Math.PI/2]; // conservé pour compat
 //  cubeGroup reculé de RADIUS, chaque face translatée de +RADIUS vers son extérieur.
 const RADIUS = NBOARDS<=1 ? 0 : HALF / Math.tan((NBOARDS===4?Math.PI/4:Math.PI/NBOARDS)); // 1 plan : plat, pas de cube
 cubeGroup.position.set(0,0,-RADIUS);
-const faceGroups=[];
+// v36 : AXE DE ROTATION DÉCALÉ (façon K5/stereo). L'axe vertical du cube ne passe plus par
+// le centre de la grille mais ENTRE LA COL 3 ET LA COL 4 (x local = +1.5 sur 5 colonnes).
+// Mécanique : chaque face contient un sous-groupe (contentGroup) translaté de -PIVOT_X, si
+// bien que la colonne-pivot de la grille retombe sur l'axe Y du cube. On recentre ensuite à
+// l'écran par un offset caméra X (PIVOT_X * échelle world) — la grille reste visuellement
+// centrée mais bascule autour de col3/4. Le pivot domino/slide/fusion est inchangé (repère grille).
+const PIVOT_COL=3.5;                                  // entre col index 3 et 4
+const PIVOT_X=(PIVOT_COL-(COLS-1)/2)*CELL_W;          // = (3.5-2)*1 = 1.5 en repère grille
+const faceGroups=[];                                  // repère grille plat (dominos / grille y vivent)
+const faceMounts=[];                                  // pivots tangents au cylindre (azimut)
 for(let f=0;f<NBOARDS;f++){
-  const fg=new THREE.Group();
-  const ang=f*(2*Math.PI/NBOARDS);                 // azimut de la face autour de Y
-  fg.position.set(Math.sin(ang)*RADIUS, 0, Math.cos(ang)*RADIUS);
-  fg.rotation.y=ang;                               // la face regarde vers l'extérieur
+  const mount=new THREE.Group();
+  const ang=f*(2*Math.PI/NBOARDS);                    // azimut de la face autour de Y
+  mount.position.set(Math.sin(ang)*RADIUS, 0, Math.cos(ang)*RADIUS);
+  mount.rotation.y=ang;                               // la face regarde vers l'extérieur
+  cubeGroup.add(mount);
+  const fg=new THREE.Group();                         // contenu : décalé pour caler l'axe sur col3/4
+  fg.position.x = -PIVOT_X;
   fg.userData.face=f;
-  cubeGroup.add(fg);
-  faceGroups.push(fg);
+  mount.add(fg);
+  faceGroups.push(fg); faceMounts.push(mount);
 }
 // Attache/détache un mesh de domino sur le groupe de SA face (repère local plat).
 function addDomino(mesh,f){ faceGroups[f].add(mesh); }
@@ -663,6 +740,59 @@ function syncPortes(srcBoard){
   }
 }
 
+// ─── PORTES FIXES : « triche » de rendu pendant la rotation du cube ───
+// Les cases-portes sont de VRAIES cases de plateau (logique ADAM Portes inchangée :
+// slide / fusion / twin / propagation). Mais visuellement on veut qu'elles ne tournent
+// JAMAIS avec le cube. Astuce : pendant la rotation, on masque les vrais meshes-portes
+// (qui tournent avec leur face) et on affiche à leur place des PROXIES fixes en scène-monde,
+// clones de l'état COURANT des portes (donc vivants : si le contenu change, le proxy change).
+// Rotation finie, on masque les proxies et on réaffiche les vrais meshes. Immobiles à l'écran,
+// vivants en logique.
+let porteProxies=[];   // meshes-proxy fixes dans scene (recréés à chaque rotation)
+function clearPorteProxies(){ porteProxies.forEach(m=>{ if(m.parent)m.parent.remove(m); }); porteProxies=[]; }
+function showPorteProxies(){
+  clearPorteProxies();
+  for(const idx of PORTE_POSITIONS){
+    const p=boards[currentBoard][idx]; if(!p)continue;
+    if(p.mesh) p.mesh.visible=false;                       // masque le vrai (il va tourner avec la face)
+    const {col,row}=getPos(idx); const {x,y}=cellToLocal(col,row);
+    const proxy=createDominoMesh(p.face1,p.face2,p.state,p.regress,p.rotation||0);
+    proxy.position.set(x-PIVOT_X,y,SAT_LIFT); proxy.quaternion.identity();
+    proxy.userData._porteState=p.state;                    // pour l'anim de ring (cosmic, etc.)
+    proxy.userData._porteIdx=idx;
+    scene.add(proxy);                                       // ← scene, pas cubeGroup : fixe
+    porteProxies.push(proxy);
+  }
+}
+function hidePorteProxies(){
+  clearPorteProxies();
+  for(const idx of PORTE_POSITIONS){ const p=boards[currentBoard][idx]; if(p&&p.mesh)p.mesh.visible=true; }
+}
+
+// ─── HALO DE PORTE : faisceaux cosmic reliant les plateaux (visibles pendant la rotation) ───
+// Pour chaque porte, un axe lumineux traverse la pile en profondeur (le long de Z), fixe dans
+// l'espace. Il matérialise que la porte transperce les 4 plateaux. Intensité montée/descendue
+// selon l'avancement de la rotation (porteBeamAmp).
+let porteBeamAmp=0;            // 0 = invisible (statique) ; 1 = plein (rotation)
+const porteBeams=[];
+(function buildPorteBeams(){
+  const len=RADIUS*2+FACE_W;   // traverse tout le cube
+  for(const idx of PORTE_POSITIONS){
+    const {col,row}=getPos(idx); const {x,y}=cellToLocal(col,row);
+    const grp=new THREE.Group(); grp.position.set(x-PIVOT_X,y,0);
+    // cœur fin lumineux
+    const core=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,len,16),
+      new THREE.MeshBasicMaterial({color:0xc4b5fd,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
+    core.rotation.x=Math.PI/2;   // axe le long de Z
+    // gaine large diffuse
+    const glow=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.22,len,20),
+      new THREE.MeshBasicMaterial({color:0x8338ec,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
+    glow.rotation.x=Math.PI/2;
+    grp.add(glow); grp.add(core); grp.userData={core,glow};
+    scene.add(grp); porteBeams.push(grp);
+  }
+})();
+
 // ════════════════════════════════════════════
 //  HISTORIQUE / UNDO ILLIMITÉ
 //  On snapshote l'ÉTAT LOGIQUE complet (tous les plans + plan courant) AVANT
@@ -745,11 +875,13 @@ function curBoard(){ return boards[currentBoard]; }
 //  voisine devant la caméra. targetQuat = orientation cible ; le slerp est joué dans animate.
 const targetQuat=new THREE.Quaternion();
 function navRight(){ if(busy||isAnimating||swapAnim||rotAnim)return; busy=true;isAnimating=true;navDir=1;
+  showPorteProxies();
   targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0), cubeAngleFor(mod(currentBoard+1))); }
 function navLeft(){ if(busy||isAnimating||swapAnim||rotAnim)return; busy=true;isAnimating=true;navDir=-1;
+  showPorteProxies();
   targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0), cubeAngleFor(mod(currentBoard-1))); }
 function onRotationComplete(){ currentBoard=mod(currentBoard+navDir); navDir=0;
-  cubeGroup.quaternion.copy(targetQuat); assignFaces(); isAnimating=false; busy=false; updateUI();
+  cubeGroup.quaternion.copy(targetQuat); assignFaces(); hidePorteProxies(); isAnimating=false; busy=false; updateUI(); refreshZoom();
   setTimeout(checkFusions,100); }
 
 function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===mod(currentBoard))); updateGoalTag(); }
@@ -976,6 +1108,7 @@ function lockPiece(p){
   const i=curBoard().indexOf(p); if(i<0)return;
   if(isPorteIdx(i)||p.target)return;                 // porte/cible : non transférables
   pushHistory();
+  if(navigator.vibrate)navigator.vibrate(18);          // v34 : feedback haptique transfert armé
   curBoard()[i]=null;                                // quitte logiquement son plateau
   lockedPiece=p; p.locked=true;
   scene.attach(p.mesh);                              // passe en scene-space (flotte, fixe à l'écran)
@@ -1012,6 +1145,7 @@ function dropPiece(cx,cy){
 }
 
 let downX=0,downY=0,downT=0,moved=false;
+let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
 canvas.addEventListener('pointerdown',e=>{
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=e.clientX; downY=e.clientY; downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
@@ -1019,7 +1153,13 @@ canvas.addEventListener('pointerdown',e=>{
   if(isAnimating||swapAnim||migrating)return;
   if(busy && !rotAnim)return;
   dragPiece=pieceAt(e.clientX,e.clientY);
-  if(!dragPiece)return;
+  if(!dragPiece){
+    // VIDE (hors pièce) : on arme un swipe horizontal → navigation plateau. Grande zone tactile.
+    if(!isAnimating&&!swapAnim&&!migrating&&!(busy&&!rotAnim)){
+      navSwipeX=e.clientX; navSwipeY=e.clientY; navSwipeT=Date.now(); canvas.setPointerCapture(e.pointerId);
+    }
+    return;
+  }
   downX=e.clientX; downY=e.clientY; downT=Date.now(); moved=false;
   dragging=true; dragAxis=null;
   const i=curBoard().indexOf(dragPiece); dragRow=rowOf(i); dragCol=colOf(i);
@@ -1034,11 +1174,11 @@ canvas.addEventListener('pointerdown',e=>{
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
   const dx=e.clientX-downX, dy=e.clientY-downY;
-  if(Math.abs(dx)>8||Math.abs(dy)>8){ moved=true; clearTimeout(pressTimer); }
+  if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
   if(lockedPiece) return;   // pièce flottante : pas de slide ; le swipe est traité au pointerup (nav)
   if(dragAxis===null){
     if(rotAnim) return;   // rotation en cours : on n'initie pas de glissement (seul le tap empile)
-    if(Math.abs(dx)>8||Math.abs(dy)>8){
+    if(Math.abs(dx)>10||Math.abs(dy)>10){
       dragAxis=Math.abs(dx)>Math.abs(dy)?'horizontal':'vertical';
       startSlide(dragAxis,dragRow,dragCol);
     } else return;
@@ -1048,6 +1188,12 @@ canvas.addEventListener('pointermove',e=>{
 });
 canvas.addEventListener('pointerup',e=>{
   clearTimeout(pressTimer);
+  // SWIPE-NAV depuis le vide : geste horizontal ample → changer de plateau.
+  if(navSwipeX!=null){
+    const ndx=e.clientX-navSwipeX, ndy=e.clientY-navSwipeY;
+    navSwipeX=navSwipeY=null;
+    if(!dragging && Math.abs(ndx)>=40 && Math.abs(ndx)>Math.abs(ndy)){ ndx>0?navRight():navLeft(); return; }
+  }
   if(!dragging){ return; }
   dragging=false;
   const dx=e.clientX-downX, dy=e.clientY-downY, dt=Date.now()-downT;
@@ -1058,7 +1204,7 @@ canvas.addEventListener('pointerup',e=>{
     else { dropPiece(e.clientX,e.clientY); }
     dragPiece=null; dragAxis=null; return;
   }
-  if(!moved && dist<8 && dt<260 && dragPiece){
+  if(!moved && dist<12 && dt<300 && dragPiece){
     // TAP → rotation selon moitié gauche/droite du domino
     const sx=screenXOf(dragPiece.mesh);
     rotatePiece(curBoard().indexOf(dragPiece), e.clientX>sx);
@@ -1067,7 +1213,7 @@ canvas.addEventListener('pointerup',e=>{
   if(dragAxis){ commitSlide(); }
   dragPiece=null;
 });
-canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); dragging=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; } dragPiece=null; });
+canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; } dragPiece=null; });
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
   const sp=wp.clone().project(camera); const r=canvas.getBoundingClientRect(); return r.left+(sp.x*0.5+0.5)*r.width; }
 
@@ -1086,15 +1232,18 @@ document.getElementById('medBtn').addEventListener('click',function(){
 updateUndoBtn();
 const dotsEl=document.getElementById('navDots');
 for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>{ if(i!==mod(currentBoard)&&!busy&&!isAnimating){ if(mod(i-currentBoard)===NBOARDS-1)navLeft(); else navRight(); } }); dotsEl.appendChild(d); }
-// SWIPE sur la barre de points : geste horizontal = changer de plateau (gauche/droite).
+// SWIPE sur la BARRE entière (v34 : cible élargie, chevrons inclus) = changer de plateau.
+const navBarEl=document.getElementById('navBar');
 let dotDownX=null, dotMoved=false;
-dotsEl.addEventListener('pointerdown',e=>{ dotDownX=e.clientX; dotMoved=false; dotsEl.setPointerCapture(e.pointerId); });
-dotsEl.addEventListener('pointermove',e=>{ if(dotDownX==null)return; if(Math.abs(e.clientX-dotDownX)>24){ dotMoved=true; } });
-dotsEl.addEventListener('pointerup',e=>{
+navBarEl.addEventListener('pointerdown',e=>{ dotDownX=e.clientX; dotMoved=false; navBarEl.setPointerCapture(e.pointerId); });
+navBarEl.addEventListener('pointermove',e=>{ if(dotDownX==null)return; if(Math.abs(e.clientX-dotDownX)>20){ dotMoved=true; } });
+navBarEl.addEventListener('pointerup',e=>{
   if(dotDownX==null)return; const dx=e.clientX-dotDownX; dotDownX=null;
-  if(dotMoved && Math.abs(dx)>=24){ dx>0?navRight():navLeft(); e.stopPropagation(); }
+  if(dotMoved && Math.abs(dx)>=20){ if(!busy&&!isAnimating){ dx>0?navRight():navLeft(); } e.stopPropagation(); }
 });
-dotsEl.addEventListener('pointercancel',()=>{ dotDownX=null; });
+navBarEl.addEventListener('pointercancel',()=>{ dotDownX=null; });
+// chevrons : tap = nav d'un cran
+navBarEl.querySelectorAll('.chev').forEach((c,idx)=>c.addEventListener('click',e=>{ if(busy||isAnimating)return; idx===0?navLeft():navRight(); e.stopPropagation(); }));
 
 // ════════════════════════════════════════════
 //  FUSION — portée du V4 : faces exposées qui se touchent, identiques (icône+état)
@@ -1110,8 +1259,12 @@ function checkFusions(){
     if(!_fuseScheduled){ _fuseScheduled=true; setTimeout(()=>{ _fuseScheduled=false; checkFusions(); },120); }
     return;
   }
-  // PORTE : propage l'état courant (suite à slide / rotation / fusion) sur tous les plateaux.
-  if(!lockedPiece) syncPortes(currentBoard);
+  // PORTE : on PROPAGE l'état courant (suite à slide / rotation / fusion) sur tous les
+  // plateaux. v36 : le COMBLAGE des portes (refillPortes) est repoussé EN FIN de passe,
+  // une fois l'état STABLE (plus aucune fusion ni aimant), pour ne pas entrer en conflit
+  // avec une pièce que l'aimant est en train d'amener — sinon aller-retour sans fin.
+  if(!lockedPiece){ syncPortes(currentBoard); }
+  if(typeof refreshZoom==='function') refreshZoom();   // v36 : l'étendue a pu changer → recale le zoom
   const d=curBoard();
   // RÉGRESSEUR (priorité sur la fusion montante) : un domino-outil "regress" en contact icône
   // avec une pièce d'état ≥ silver la fait DESCENDRE d'un cran et se consomme. Sans condition
@@ -1170,7 +1323,14 @@ function checkFusions(){
   // (v11 : l'état n'étant plus une condition de fusion, le flash rouge "même icône / état
   //  différent" n'a plus lieu d'être — ce contact fusionne désormais.)
   // tenter l'attraction magnétique (rapproche une paire séparée si couloir vide)
-  tryMagnet();
+  if(tryMagnet()) return;        // un aimant agit → il rappellera checkFusions après son anim
+  // ── ÉTAT STABLE : plus aucune fusion ni aimant possible. C'est SEULEMENT maintenant qu'on
+  // comble la barre de portes (v36). Si le comblage a réellement aspiré une pièce, l'état a
+  // changé → on relance UNE passe (un refill peut créer une fusion légitime). Sinon, fini.
+  if(!lockedPiece){
+    if(refillPortes()){ syncPortes(currentBoard); setTimeout(checkFusions,60); return; }
+    syncPortes(currentBoard);
+  }
 }
 
 // ════════════════════════════════════════════
@@ -1186,6 +1346,43 @@ function corridorEmpty(d,i1,i2,horizontal){
 //   • fusion montante : aucune des deux n'est régresseur (l'état n'importe pas — règle 1A) ;
 //   • régression : exactement UN régresseur, l'autre (la cible) d'état ≥ silver.
 // Le régresseur est donc happé exactement comme une pièce d'aimant ordinaire.
+// ════════════════════════════════════════════
+//  v35 : AIMANTATION DE LA BARRE DE PORTES — les cases-portes restent TOUJOURS pleines.
+//  Quand une porte (idx ∈ PORTE_POSITIONS) se vide (fusion / twin / migration), on aspire
+//  dans sa COLONNE le domino non-porte le PLUS PROCHE (dessus OU bas, ex-aequo → bas). Tout
+//  le segment entre la source et la porte glisse d'un cran vers la porte (effet tapis-roulant
+//  vertical local). N'aspire jamais une autre porte ni la cible. Si la colonne n'a aucun
+//  domino libre, la porte reste vide (rien à aspirer).
+function refillPortes(){
+  const d=curBoard(); let moved=false;
+  for(const pIdx of PORTE_POSITIONS){
+    if(d[pIdx]) continue;                       // porte déjà pleine
+    const col=colOf(pIdx), prow=rowOf(pIdx);
+    let bestRow=-1, bestDist=ROWS+1, bestDir=0;
+    for(let r=0;r<ROWS;r++){ if(r===prow) continue;
+      const i=getIdx(col,r); const p=d[i];
+      if(!p||isPorteIdx(i)||p.target) continue; // ignore portes voisines et cible
+      // le segment porte→source ne doit franchir NI une autre porte NI une cible
+      const lo=Math.min(prow,r), hi=Math.max(prow,r); let blocked=false;
+      for(let k=lo;k<=hi;k++){ if(k===prow||k===r)continue; const q=d[getIdx(col,k)];
+        if(isPorteIdx(getIdx(col,k))||(q&&q.target)){ blocked=true; break; } }
+      if(blocked) continue;
+      const dist=Math.abs(r-prow);
+      if(dist<bestDist || (dist===bestDist && r>prow)){ bestDist=dist; bestRow=r; bestDir=(r>prow?1:-1); }
+    }
+    if(bestRow<0) continue;                     // colonne sans domino libre : porte reste vide
+    // glisse le segment [porte → source] d'un cran vers la porte (les cases internes suivent)
+    if(bestDir>0){ for(let r=prow;r<bestRow;r++){ d[getIdx(col,r)]=d[getIdx(col,r+1)]; } }
+    else { for(let r=prow;r>bestRow;r--){ d[getIdx(col,r)]=d[getIdx(col,r-1)]; } }
+    d[getIdx(col,bestRow)]=null;                // l'ancienne source est désormais vide
+    // repositionne les meshes du segment touché
+    const lo=Math.min(prow,bestRow), hi=Math.max(prow,bestRow);
+    for(let r=lo;r<=hi;r++){ const p=d[getIdx(col,r)]; if(p) placePiece(p); }
+    moved=true;
+  }
+  return moved;
+}
+// ════════════════════════════════════════════
 function magnetMatch(a,dirA,b,dirB){
   const fa=getExposedFace(a,dirA), fb=getExposedFace(b,dirB);
   if(!fa||!fb||fa!==fb) return false;                 // icônes au contact doivent coïncider
@@ -1229,18 +1426,18 @@ function findChainMagnet(d){
   return null;
 }
 function tryMagnet(){
-  if(busy||isAnimating||swapAnim||migrating)return;
+  if(busy||isAnimating||swapAnim||migrating)return false;
   const d=curBoard();
   // ── PRIORITÉ : aimant-chaîne bilatéral ──
   const ch=findChainMagnet(d);
-  if(ch){ chainMagnetMove(ch); return; }
+  if(ch){ chainMagnetMove(ch); return true; }
   // lignes : pour chaque paire gauche→droite séparée d'au moins une case
   for(let y=0;y<ROWS;y++){
     for(let cL=0;cL<COLS-1;cL++){ const iL=y*COLS+cL; if(!d[iL])continue;
       for(let cR=cL+1;cR<COLS;cR++){ const iR=y*COLS+cR; if(!d[iR])continue;
         if(cR-cL<2)break;  // déjà adjacents → checkFusions s'en occupe
         if(magnetMatch(d[iL],'right',d[iR],'left')&&corridorEmpty(d,iL,iR,true)){
-          magnetMove(iL,iR,true); return;
+          magnetMove(iL,iR,true); return true;
         }
         break;  // le plus proche à droite sur cette ligne suffit
       }
@@ -1252,12 +1449,13 @@ function tryMagnet(){
       for(let rB=rT+1;rB<ROWS;rB++){ const iB=rB*COLS+x; if(!d[iB])continue;
         if(rB-rT<2)break;
         if(magnetMatch(d[iT],'bottom',d[iB],'top')&&corridorEmpty(d,iT,iB,false)){
-          magnetMove(iT,iB,false); return;
+          magnetMove(iT,iB,false); return true;
         }
         break;
       }
     }
   }
+  return false;
 }
 // rapproche les deux dominos : on glisse celui de droite/bas vers celui de gauche/haut (couloir vide garanti)
 function magnetMove(i1,i2,horizontal){
@@ -1659,10 +1857,47 @@ function fitCamera(){
   const sidePx=10;                                         // interstice latéral souhaité
   const marginW=(w+2*sidePx)/w;                            // largeur cible = écran - 2*interstice
   const needW=(FACE_W*marginW)/(2*Math.tan(vFOV/2)*aspect);// distance pour remplir la largeur
-  const needH=(FACE_H*1.0)/(2*Math.tan(vFOV/2));           // garde-fou hauteur (ne pas couper)
+  // v34 : zones réservées en haut (barre nav) et en bas (boutons pouce). La grille se cale
+  // dans la bande centrale restante ; on recentre la caméra sur le milieu de cette bande.
+  const topPx=58, botPx=92;                                // hauteurs réservées (CSS ci-dessus)
+  const usableH=Math.max(1,h-topPx-botPx);
+  const needH=(FACE_H*(h/usableH))/(2*Math.tan(vFOV/2));   // garde-fou hauteur sur la zone utile
   camera.position.z=Math.max(needW,needH);
-  camera.position.set(0,0,camera.position.z); camera.lookAt(0,0,0);
+  // décalage vertical : le centre de la zone utile n'est pas le centre écran.
+  const centerShiftPx=(botPx-topPx)/2;                     // >0 si plus réservé en bas → viser plus haut
+  const worldPerPx=(2*camera.position.z*Math.tan(vFOV/2))/h;
+  const offY=centerShiftPx*worldPerPx;
+  // v36 : la face courante a son contenu décalé de -PIVOT_X (axe de rotation sur col3/4).
+  // On recentre la grille à l'écran en visant X=-PIVOT_X (la grille reste centrée de face,
+  // mais bascule autour de col3/4 lors de la rotation cube).
+  const offX=-PIVOT_X;
+  // v36 : mémorise le cadrage PLEIN (toute la grille) comme borne large du zoom.
+  baseFitZ=camera.position.z; baseFitY=offY; baseWorldPerPx=worldPerPx; vFOVcache=vFOV;
+  camera.position.set(offX,offY,camera.position.z); camera.lookAt(offX,offY,0);
   camera.updateProjectionMatrix();
+  refreshZoom();                                           // recale la cible de zoom sur le plateau courant
+}
+// v36 : ZOOM ADAPTATIF (repris de stereo/K5). Au lieu d'un Z fixe plein-cadre, on resserre
+// la profondeur sur l'ÉTENDUE RÉELLE des dominos du plateau courant : moins il y a de pièces
+// (plateaux allégés), plus on s'approche. Lissé dans animate (comme targetCamZ de K5).
+let baseFitZ=CAM_Z, baseFitY=0, baseWorldPerPx=0.02, vFOVcache=42*Math.PI/180;
+let targetCamZ=CAM_Z, targetCamY=0;
+function refreshZoom(){
+  const d=boards[currentBoard]; if(!d){ targetCamZ=baseFitZ; targetCamY=baseFitY; return; }
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,n=0;
+  for(let i=0;i<TOTAL;i++){ const p=d[i]; if(!p)continue; const {col,row}=getPos(i); const {x,y}=cellToLocal(col,row);
+    minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++; }
+  if(n===0){ targetCamZ=baseFitZ; targetCamY=baseFitY; return; }
+  // étendue + marge d'une cellule ; on garde l'axe X visé (-PIVOT_X) inchangé, on ne zoome qu'en Z/Y.
+  const padW=(maxX-minX)+2.0*CELL_W, padH=(maxY-minY)+2.0*CELL_W;
+  const aspect=window.innerWidth/window.innerHeight;
+  const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
+  const needZh=padH/(2*Math.tan(vFOVcache/2));
+  const z=Math.min(baseFitZ, Math.max(baseFitZ*0.45, Math.max(needZw,needZh)));
+  targetCamZ=z;
+  // recentre verticalement sur le barycentre du contenu, en conservant le shift bande utile.
+  const cY=(minY+maxY)/2;
+  targetCamY=baseFitY + cY*0.6;
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); fitCamera();
 window.addEventListener('resize',fitCamera);
@@ -1677,7 +1912,9 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // faces à rendre : la courante, et pendant la rotation aussi la cible (les autres masquées)
   const targetBoard = isAnimating ? mod(currentBoard+navDir) : currentBoard;
   boards.forEach((arr,f)=>arr.forEach((p,si)=>{ if(!p||!p.mesh)return; const ud=p.mesh.userData;
-    const shown = (f===currentBoard)||(isAnimating&&f===targetBoard);
+    let shown = (f===currentBoard)||(isAnimating&&f===targetBoard);
+    // pendant la rotation, les cases-portes sont rendues par leurs PROXIES fixes : on masque le vrai
+    if(isAnimating&&isPorteIdx(si)) shown=false;
     p.mesh.visible = shown;
     if(!shown) return;
     if(!swapAnim){ p.mesh.position.z = SAT_LIFT; }
@@ -1719,39 +1956,39 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   if(lockedPiece&&lockedPiece.mesh){
     const m=lockedPiece.mesh; m.visible=true;
     const fz=(lockFloatBase?lockFloatBase.z:camera.position.z-3.0);
-    m.position.set(0,0,fz); m.quaternion.identity();
+    m.position.set(camera.position.x,camera.position.y,fz); m.quaternion.identity();
     const pulse=1.12+Math.sin(t*4)*0.03; m.scale.set(pulse,pulse,pulse);
     const ud=m.userData; if(ud&&ud.edgeLines){ ud.edgeLines.material.opacity=0.85; ud.faceMesh.material.opacity=1; }
   }
-  // COSMICS FIXES : ring cosmic animé, toujours visibles, jamais affectés par la rotation.
-  FIXED_COSMICS.forEach((m,k)=>{ const ud=m.userData; m.visible=true;
-    drawCosmicRing(ud.ringCanvas,t*Math.PI/2+k*0.6); ud.ringTex.needsUpdate=true; ud.ringMesh.material.opacity=1;
-    ud.edgeLines.material.color.set(0x8338ec); ud.edgeLines.material.opacity=0.5;
-    ud.faceMesh.material.opacity=1; });
+  // PROXIES-PORTES fixes : animés pendant la rotation, immobiles dans l'espace.
+  porteProxies.forEach((m,k)=>{ const ud=m.userData; m.visible=true; const st=ud._porteState||'white';
+    if(st==='cosmic'){ drawCosmicRing(ud.ringCanvas,t*Math.PI/2+k*0.6); ud.ringTex.needsUpdate=true; ud.ringMesh.material.opacity=1;
+      ud.edgeLines.material.color.set(0x8338ec); }
+    else if(st==='supernovae'||st==='plasma'){ drawSupernovaeRing(ud.ringCanvas,t*Math.PI*(st==='plasma'?1:2/3)); ud.ringTex.needsUpdate=true; ud.ringMesh.material.opacity=1;
+      ud.edgeLines.material.color.set(st==='plasma'?0xff2060:0xff8c00); }
+    else if(st==='emerald'){ ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0x34d399); }
+    else if(st==='gold'){ ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0xffd700); }
+    else if(st==='silver'){ ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0x22d3ee); }
+    else { ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0xd2d2dc); }
+    ud.edgeLines.material.opacity=0.5; ud.faceMesh.material.opacity=1; });
+  // HALO DE PORTE : amplitude montée pendant la rotation, retombe au repos.
+  porteBeamAmp += ((isAnimating?1:0)-porteBeamAmp)*0.12;
+  porteBeams.forEach((g,k)=>{ const ud=g.userData; const pulse=0.85+Math.sin(t*4+k*0.9)*0.15;
+    const a=porteBeamAmp*pulse;
+    ud.core.material.opacity=Math.min(1,a*0.9);
+    ud.glow.material.opacity=a*0.35;
+    const s=1+porteBeamAmp*0.15*Math.sin(t*3+k); ud.glow.scale.set(s,1,s);
+    g.visible=porteBeamAmp>0.02; });
+  // v36 : ZOOM lissé (façon K5). On tend doucement Z et Y vers la cible du plateau courant ;
+  // X reste fixé sur l'axe décalé (-PIVOT_X). Pendant la rotation cube, on retient le plein cadre.
+  const zGoal = isAnimating ? baseFitZ : targetCamZ;
+  const yGoal = isAnimating ? baseFitY : targetCamY;
+  camera.position.z += (zGoal-camera.position.z)*0.08;
+  camera.position.y += (yGoal-camera.position.y)*0.08;
+  camera.position.x += (-PIVOT_X-camera.position.x)*0.12;
+  camera.lookAt(camera.position.x, camera.position.y, 0);
   renderer.render(scene,camera);
 }
-// ─── COSMICS FIXES (hors plateau, hors cube) ───
-// Trois dominos cosmic en rangée, collés, au centre. Ajoutés DIRECTEMENT à scene :
-// ils ne tournent jamais avec cubeGroup et restent absolument fixes dans l'espace.
-// N'étant dans aucun boards[], ils n'entrent dans aucune logique (fusion/aimant/twin)
-// → ne matchent avec aucun domino d'aucun tableau. Faces distinctes (chevron/wave).
-const FIXED_COSMICS=[];
-(function buildFixedCosmics(){
-  const FZ = 0.06;                       // légèrement devant la face (Z=0) pour éviter le z-fight
-  const row = [
-    {f1:'chevron', f2:'wave'},
-    {f1:'wave',    f2:'chevron'},
-    {f1:'chevron', f2:'wave'},
-  ];
-  row.forEach((d,k)=>{
-    const mesh=createDominoMesh(d.f1,d.f2,'cosmic',false,0);
-    mesh.position.set((k-1)*CELL_W, 0, FZ);   // rangée horizontale centrée, collés
-    mesh.quaternion.identity();
-    scene.add(mesh);                            // ← scene, pas cubeGroup
-    FIXED_COSMICS.push(mesh);
-  });
-})();
-
 buildBoards(); assignFaces(); updateUI(); animate();
 // v28 : check au démarrage pour détecter les twins déjà présents dans le board initial
 setTimeout(checkFusions, 300);
