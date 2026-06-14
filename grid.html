@@ -2078,7 +2078,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // v40 : le glissement n'utilise PLUS de dézoom brutal. À la place, refreshZoom est recalculé
   // en continu sur les positions VISUELLES réelles pendant le slide (voir applySlide) → le zoom
   // principal SUIT l'étendue qui passe de 3 à 4/5 colonnes. Ici, simple lissage vers targetCamZ.
-  let zGoal=targetCamZ;
+  let zGoal=targetCamZ, bell=0;
   if(isAnimating){
     const aspect=window.innerWidth/window.innerHeight;
     const halfSweep=(FACE_W/2+Math.abs(PIVOT_X))+0.4*CELL_W;
@@ -2086,16 +2086,15 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     const dotv=Math.min(1,Math.abs(cubeGroup.quaternion.dot(targetQuat)));
     const angLeft=2*Math.acos(dotv);                  // radians restants (≈π/2 au départ)
     const prog=1-Math.min(1,angLeft/(Math.PI/2));     // 0→1
-    const bell=Math.sin(Math.min(1,Math.max(0,prog))*Math.PI); // 0 aux bords, 1 au milieu
+    bell=Math.sin(Math.min(1,Math.max(0,prog))*Math.PI); // 0 aux bords, 1 au milieu
     zGoal=targetCamZ + bell*Math.max(0, zSafe-targetCamZ);
   }
-  // v37 : ZOOM EN UN SEUL TEMPS. La cible (targetCamZ/Y) est posée sur le plateau d'ARRIVÉE
-  // dès le lancement de la nav → la caméra tend vers elle PENDANT la rotation. X sur -PIVOT_X.
+  // v41b : X partage LA MÊME cloche que Z. Au pic de l'arc (bell=1) on vise -PIVOT_X (axe
+  // de bascule col3/4) ; aux extrémités (bell=0) on vise targetCamX (recentré sur les colonnes
+  // occupées). Une seule courbe continue → Z, Y et X convergent ensemble, plus de désynchro.
+  const xGoal=targetCamX + bell*(-PIVOT_X-targetCamX);
   camera.position.z += (zGoal-camera.position.z)*0.12;
   camera.position.y += (targetCamY-camera.position.y)*0.08;
-  // v41 : pendant la rotation cube, l'axe écran doit rester sur col3/4 (-PIVOT_X) sinon la
-  // bascule se décale. Hors rotation, on suit targetCamX (recentré sur les colonnes occupées).
-  const xGoal=isAnimating ? -PIVOT_X : targetCamX;
   camera.position.x += (xGoal-camera.position.x)*0.12;
   camera.lookAt(camera.position.x, camera.position.y, 0);
   renderer.render(scene,camera);
