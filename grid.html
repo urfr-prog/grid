@@ -100,6 +100,19 @@
      lieu de casser. Rare, placée tard dans la pile : après les épreuves, le don.
 
   ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v38 : GRILLE 5×8 (au lieu de 5×9) + CORRECTION CAMÉRA (sens large).
+        • ROWS 9→8 : la grille tenait mal en hauteur sur iPhone, un bord sortait. FACE_H,
+          needH, picking et cellToLocal suivent automatiquement (TOTAL 45→40). Niveaux
+          revérifiés : tous les idx ∈ grille, largeurs 5/4/3/3 et aucun match conservés.
+        • BUG "dominos qui sortent quand la barre des portes se décale" : cause = l'axe de
+          rotation décalé (col3/4, PIVOT_X=1.5) fait BALAYER au contenu une largeur > au
+          cadrage serré pendant la rotation (écart mesuré ~4.05 vs ~2.5 cadrés ; même axe
+          centré balaie déjà ~3.2). Le cadrage fixe ne pouvait pas couvrir l'arc.
+          FIX : recul transitoire en Z pendant la rotation, modulé par une CLOCHE sin
+          (0 aux extrémités, 1 au milieu) → zoom serré au départ, recul le temps de l'arc,
+          zoom serré à l'arrivée. Base de cloche = targetCamZ d'arrivée (pas de recul
+          parasite au lancement). zSafe couvre (FACE_W/2+|PIVOT_X|+marge). Geste continu,
+          "un temps" préservé. X reste sur -PIVOT_X, recentrage au repos symétrique (±2).
   v37 : LARGEURS DIFFÉRENCIÉES + ZOOM EN UN TEMPS + PLATEAUX CADUCS.
         • LARGEURS par plateau (emprise horizontale des pièces LIBRES, portes non
           comptées) : L1=5, L2=4, L3=3 (régresseur), L4=3. Combiné au zoom adaptatif,
@@ -269,7 +282,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v37 · Largeurs 5/4/3/3 + zoom en un temps + plateaux caducs</title>
+<title>ADAM Stack — v38 · Grille 5×8 + caméra anti-débordement (balayage rotation)</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -337,7 +350,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const COLS=5, ROWS=9, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
+const COLS=5, ROWS=8, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 
 const STATE_ORDER=['white','silver','gold','emerald','cosmic','supernovae','plasma'];
 const MOVE_DIRS={ white:null, silver:[[1,0],[-1,0]], gold:[[1,1],[1,-1],[-1,1],[-1,-1]],
@@ -2024,10 +2037,30 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     ud.glow.material.opacity=a*0.35;
     const s=1+porteBeamAmp*0.15*Math.sin(t*3+k); ud.glow.scale.set(s,1,s);
     g.visible=porteBeamAmp>0.02; });
+  // v38 : CAMÉRA — anti-débordement pendant la rotation. Le contenu, pivotant autour de
+  // l'axe décalé (col3/4), balaie une largeur supérieure au cadrage serré : sans correction,
+  // un bord de grille sort de l'écran en milieu de rotation. On recule donc transitoirement
+  // en Z selon une CLOCHE (sin) : zoom serré au départ → recul au milieu de l'arc → zoom serré
+  // à l'arrivée. Une seule courbe continue, donc le geste reste "en un temps" (pas d'à-coup).
+  let zGoal=targetCamZ;
+  if(isAnimating){
+    // progression de la rotation : 0 au départ, 1 à l'arrivée (écart angulaire normalisé).
+    const dotv=Math.min(1,Math.abs(cubeGroup.quaternion.dot(targetQuat)));
+    const angLeft=2*Math.acos(dotv);                  // radians restants (≈π/2 au départ)
+    const prog=1-Math.min(1,angLeft/(Math.PI/2));     // 0→1
+    const bell=Math.sin(Math.min(1,Math.max(0,prog))*Math.PI); // 0 aux bords, 1 au milieu
+    // Z couvrant le pire balayage : demi-largeur ~ (FACE_W/2 + |PIVOT_X|) + marge.
+    const halfSweep=(FACE_W/2+Math.abs(PIVOT_X))+0.4*CELL_W;
+    const aspect=window.innerWidth/window.innerHeight;
+    const zSafe=halfSweep/(Math.tan(vFOVcache/2)*aspect);
+    // base = zoom du plateau d'arrivée ; on ajoute UNIQUEMENT le surplus nécessaire à l'arc,
+    // modulé par la cloche → départ et arrivée au zoom serré, recul transitoire au milieu.
+    zGoal=targetCamZ + bell*Math.max(0, zSafe-targetCamZ);
+  }
   // v37 : ZOOM EN UN SEUL TEMPS. La cible (targetCamZ/Y) est posée sur le plateau d'ARRIVÉE
   // dès le lancement de la nav → la caméra tend vers elle PENDANT la rotation : zoom et
-  // rotation forment un geste unique, plus de "deux temps". X reste sur l'axe décalé -PIVOT_X.
-  camera.position.z += (targetCamZ-camera.position.z)*0.08;
+  // rotation forment un geste unique. X reste sur l'axe décalé -PIVOT_X.
+  camera.position.z += (zGoal-camera.position.z)*0.10;
   camera.position.y += (targetCamY-camera.position.y)*0.08;
   camera.position.x += (-PIVOT_X-camera.position.x)*0.12;
   camera.lookAt(camera.position.x, camera.position.y, 0);
