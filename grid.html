@@ -1083,6 +1083,7 @@ function refreshZoomSlide(){
   const needZh=padH/(2*Math.tan(vFOVcache/2));
   targetCamZ=Math.min(baseFitZ, Math.max(baseFitZ*0.45, Math.max(needZw,needZh)));
   const cY=(minY+maxY)/2; targetCamY=baseFitY + cY*0.6;
+  const cX=(minX+maxX)/2; targetCamX=-PIVOT_X + cX;
 }
 
 // fin de glissement : calcule le nombre de crans et réécrit la grille logique (wrap-around)
@@ -1970,17 +1971,17 @@ function fitCamera(){
 // la profondeur sur l'ÉTENDUE RÉELLE des dominos du plateau courant : moins il y a de pièces
 // (plateaux allégés), plus on s'approche. Lissé dans animate (comme targetCamZ de K5).
 let baseFitZ=CAM_Z, baseFitY=0, baseWorldPerPx=0.02, vFOVcache=42*Math.PI/180;
-let targetCamZ=CAM_Z, targetCamY=0;
+let targetCamZ=CAM_Z, targetCamY=0, targetCamX=-PIVOT_X;
 // v37 : refreshZoom(boardIdx) calcule la cible de zoom pour un plateau donné (par défaut le
 // courant). Appelé avec le plateau d'ARRIVÉE au lancement de la nav → le zoom vise déjà la
 // bonne échelle pendant la rotation : un seul geste continu, plus de "deux temps".
 function refreshZoom(boardIdx){
   const bi = (boardIdx==null) ? currentBoard : mod(boardIdx);
-  const d=boards[bi]; if(!d){ targetCamZ=baseFitZ; targetCamY=baseFitY; return; }
+  const d=boards[bi]; if(!d){ targetCamZ=baseFitZ; targetCamY=baseFitY; targetCamX=-PIVOT_X; return; }
   let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,n=0;
   for(let i=0;i<TOTAL;i++){ const p=d[i]; if(!p)continue; const {col,row}=getPos(i); const {x,y}=cellToLocal(col,row);
     minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++; }
-  if(n===0){ targetCamZ=baseFitZ; targetCamY=baseFitY; return; }
+  if(n===0){ targetCamZ=baseFitZ; targetCamY=baseFitY; targetCamX=-PIVOT_X; return; }
   // étendue + marge d'une cellule ; on garde l'axe X visé (-PIVOT_X) inchangé, on ne zoome qu'en Z/Y.
   const padW=(maxX-minX)+2.0*CELL_W, padH=(maxY-minY)+2.0*CELL_W;
   const aspect=window.innerWidth/window.innerHeight;
@@ -1991,6 +1992,10 @@ function refreshZoom(boardIdx){
   // recentre verticalement sur le barycentre du contenu, en conservant le shift bande utile.
   const cY=(minY+maxY)/2;
   targetCamY=baseFitY + cY*0.6;
+  // v41 : recentre AUSSI en X sur l'emprise réelle des colonnes occupées (cas <5 col décalées).
+  // Le contenu de la face est décalé de -PIVOT_X → le barycentre écran est (cX - PIVOT_X).
+  const cX=(minX+maxX)/2;
+  targetCamX=-PIVOT_X + cX;
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); fitCamera();
 window.addEventListener('resize',fitCamera);
@@ -2088,7 +2093,10 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // dès le lancement de la nav → la caméra tend vers elle PENDANT la rotation. X sur -PIVOT_X.
   camera.position.z += (zGoal-camera.position.z)*0.12;
   camera.position.y += (targetCamY-camera.position.y)*0.08;
-  camera.position.x += (-PIVOT_X-camera.position.x)*0.12;
+  // v41 : pendant la rotation cube, l'axe écran doit rester sur col3/4 (-PIVOT_X) sinon la
+  // bascule se décale. Hors rotation, on suit targetCamX (recentré sur les colonnes occupées).
+  const xGoal=isAnimating ? -PIVOT_X : targetCamX;
+  camera.position.x += (xGoal-camera.position.x)*0.12;
   camera.lookAt(camera.position.x, camera.position.y, 0);
   renderer.render(scene,camera);
 }
