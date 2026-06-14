@@ -100,6 +100,21 @@
      lieu de casser. Rare, placée tard dans la pile : après les épreuves, le don.
 
   ── JOURNAL ────────────────────────────────────────────────────────────────────
+  v37 : LARGEURS DIFFÉRENCIÉES + ZOOM EN UN TEMPS + PLATEAUX CADUCS.
+        • LARGEURS par plateau (emprise horizontale des pièces LIBRES, portes non
+          comptées) : L1=5, L2=4, L3=3 (régresseur), L4=3. Combiné au zoom adaptatif,
+          chaque plateau a une échelle distincte à l'écran. Aucun match au démarrage
+          (revérifié par simulation des 5 détecteurs ; libres en colonnes-portes
+          autorisées tant que la face de contact diffère de la porte).
+        • ZOOM EN UN SEUL TEMPS : refreshZoom(boardIdx) prend un plateau cible ; navRight
+          /navLeft posent la cible sur le plateau d'ARRIVÉE dès le lancement. animate tend
+          TOUJOURS vers targetCamZ/Y (plus de bascule plein-cadre pendant la rotation) →
+          zoom + rotation = un seul geste continu.
+        • PLATEAUX CADUCS : un plateau est "vivant" tant qu'il a ≥1 pièce LIBRE (portes
+          ignorées). Quand sa dernière libre disparaît (fusion/twin), il devient caduc :
+          son dot se masque (updateUI), le compteur du haut diminue → sens donné aux
+          échanges. La nav SAUTE les plateaux caducs (nextLiveBoard) ; navTarget remplace
+          currentBoard+navDir (peut être à 2 crans). S'il ne reste qu'un vivant, nav inerte.
   v36 : NIVEAUX ALLÉGÉS + AXE DÉCALÉ + ZOOM ADAPTATIF (repris de stereo/K5).
         • Chaque plateau passe à ~6 dominos (3 portes 21/22/23 + 3 pièces libres) ;
           grille 5×9 conservée, juste plus aérée. Aucun match au départ (inchangé).
@@ -254,7 +269,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v36 · Niveaux allégés + axe de rotation col3/4 + zoom adaptatif</title>
+<title>ADAM Stack — v37 · Largeurs 5/4/3/3 + zoom en un temps + plateaux caducs</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -548,15 +563,17 @@ function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
 // (21/22/23) pour éviter tout twin entre elles.
 // v36 : NIVEAUX ALLÉGÉS — ~6 dominos par plateau (3 portes 21/22/23 + 3 pièces libres),
 // grille 5×9 conservée mais bien plus aérée.
+// v37 : LARGEURS DIFFÉRENCIÉES (emprise horizontale des pièces LIBRES, portes non comptées) :
+//   L1 = largeur 5 (col 0→4), L2 = largeur 4, L3 = largeur 3 (régresseur), L4 = largeur 3.
+//   Combiné au zoom adaptatif, chaque plateau a sa propre échelle à l'écran.
 // GARANTIE "aucun match au démarrage" (vérifiée par simulation des 5 détecteurs : régresseur,
 // twin, chaîne, fusion simple, aimant V/H) :
-//  • Toutes les pièces sont en portrait (rot 0) → seules les faces HAUT/BAS existent, donc
-//    aucun contact ni aimant HORIZONTAL possible (faces gauche/droite nulles).
-//  • Les 3 pièces libres vivent UNIQUEMENT en COL 0 et COL 4 (jamais une colonne-porte 1/2/3)
-//    et JAMAIS sur la rangée des portes (row 4) → aucun contact/aimant/twin avec une porte.
-//  • Quand deux libres partagent une colonne, leurs faces de CONTACT vertical (bottom du haut
-//    vs top du bas) sont rendues DIFFÉRENTES → pas d'aimant vertical entre elles.
-// ── PLATEAU 1 ──
+//  • rot 0 partout → aucun contact ni aimant HORIZONTAL (faces gauche/droite nulles).
+//  • Quand une pièce libre occupe une COLONNE-PORTE (1/2/3), sa face de contact vers la porte
+//    diffère de la face de la porte → pas d'aimant vertical avec la porte.
+//  • Deux libres d'une même colonne : faces de contact vertical distinctes.
+// Portes — top: c1=chevron c2=wave c3=line ; bottom: c1=wave c2=circle c3=chevron.
+// ── PLATEAU 1 — largeur 5 ──
 const LEVEL_1=[
   [5,'white','wave','chevron',0],
   [9,'silver','chevron','circle',0],
@@ -565,29 +582,29 @@ const LEVEL_1=[
   [22,'cosmic','wave','circle',0],   // PORTE
   [23,'cosmic','line','chevron',0],  // PORTE
 ];
-// ── PLATEAU 2 ──
+// ── PLATEAU 2 — largeur 4 ──
 const LEVEL_2=[
   [10,'white','line','chevron',0],
-  [14,'silver','circle','wave',0],
+  [13,'silver','circle','wave',0],
   [35,'white','line','circle',0],
   [21,'cosmic','chevron','wave',0],  // PORTE
   [22,'cosmic','wave','circle',0],   // PORTE
   [23,'cosmic','line','chevron',0],  // PORTE
 ];
-// ── PLATEAU 3 — un régresseur ──
+// ── PLATEAU 3 — largeur 3, un régresseur ──
 const LEVEL_3=[
-  [5,'white','circle','wave',0],
+  [7,'white','line','circle',0],
   [9,'silver','wave','chevron',0,1], // régresseur
-  [34,'gold','line','circle',0],
+  [13,'gold','circle','wave',0],
   [21,'cosmic','chevron','wave',0],  // PORTE
   [22,'cosmic','wave','circle',0],   // PORTE
   [23,'cosmic','line','chevron',0],  // PORTE
 ];
-// ── PLATEAU 4 ──
+// ── PLATEAU 4 — largeur 3 ──
 const LEVEL_4=[
-  [10,'white','circle','line',0],
-  [14,'silver','wave','chevron',0],
-  [35,'white','chevron','wave',0],
+  [5,'white','circle','line',0],
+  [6,'silver','wave','circle',0],
+  [12,'white','chevron','line',0],
   [21,'cosmic','chevron','wave',0],  // PORTE
   [22,'cosmic','wave','circle',0],   // PORTE
   [23,'cosmic','line','chevron',0],  // PORTE
@@ -863,28 +880,52 @@ function assignFaces(){
 //  L'enveloppe "stack" (profondeur, nav, zoom-traversant) est conservée.
 // ════════════════════════════════════════════════════════════
 
-let busy=false, isAnimating=false, navDir=0;
+let busy=false, isAnimating=false, navDir=0, navTarget=0;
 const ROT_DUR=0.55;
 let swapAnim=null;            // réutilisé pour animer le snap du glissement
 let rotAnim=null;             // animation de pivot du domino au tap (slerp doux, feel du layer)
 
 function curBoard(){ return boards[currentBoard]; }
 
+// v37 : PLATEAU CADUC. Un plateau est "vivant" tant qu'il porte au moins UNE pièce LIBRE
+// (ni porte, ni cible). Les portes étant toujours pleines (refillPortes), elles ne comptent
+// pas : sinon aucun plateau ne serait jamais caduc. Quand un plateau perd sa dernière pièce
+// libre (par fusion/twin/migration), il devient caduc → son dot disparaît, le compteur du
+// haut diminue. Cela donne un sens aux échanges : on vide les plateaux un à un.
+function boardIsLive(f){ const b=boards[f]; if(!b)return false;
+  for(let i=0;i<TOTAL;i++){ const p=b[i]; if(p&&!isPorteIdx(i)&&!p.target) return true; }
+  return false; }
+function liveBoardCount(){ let n=0; for(let f=0;f<NBOARDS;f++) if(boardIsLive(f))n++; return n; }
+
 // ─── Navigation entre tableaux (v8 : ROTATION 90° DU CUBE sur Y, façon mada) ───
 //  Toutes les faces sont déjà dans l'espace. On tourne cubeGroup pour ramener la face
 //  voisine devant la caméra. targetQuat = orientation cible ; le slerp est joué dans animate.
 const targetQuat=new THREE.Quaternion();
-function navRight(){ if(busy||isAnimating||swapAnim||rotAnim)return; busy=true;isAnimating=true;navDir=1;
-  showPorteProxies();
-  targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0), cubeAngleFor(mod(currentBoard+1))); }
-function navLeft(){ if(busy||isAnimating||swapAnim||rotAnim)return; busy=true;isAnimating=true;navDir=-1;
-  showPorteProxies();
-  targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0), cubeAngleFor(mod(currentBoard-1))); }
-function onRotationComplete(){ currentBoard=mod(currentBoard+navDir); navDir=0;
+// v37 : la nav SAUTE les plateaux caducs (sans pièce libre). On cherche le prochain plateau
+// vivant dans le sens demandé ; s'il n'y en a aucun autre, on ne bouge pas. navTarget = index
+// de destination (peut être à 2 crans si un plateau intermédiaire est caduc) ; la rotation
+// cube s'ajuste via cubeAngleFor(navTarget). Le zoom vise navTarget dès le lancement.
+function nextLiveBoard(dir){
+  for(let step=1; step<NBOARDS; step++){ const f=mod(currentBoard+dir*step); if(boardIsLive(f)) return f; }
+  return -1;   // aucun autre plateau vivant
+}
+function navRight(){ if(busy||isAnimating||swapAnim||rotAnim)return; const tgt=nextLiveBoard(1); if(tgt<0)return;
+  busy=true;isAnimating=true;navDir=1;navTarget=tgt;
+  showPorteProxies(); refreshZoom(tgt);   // v37 : zoom vise déjà l'arrivée (geste continu)
+  targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0), cubeAngleFor(tgt)); }
+function navLeft(){ if(busy||isAnimating||swapAnim||rotAnim)return; const tgt=nextLiveBoard(-1); if(tgt<0)return;
+  busy=true;isAnimating=true;navDir=-1;navTarget=tgt;
+  showPorteProxies(); refreshZoom(tgt);   // v37 : zoom vise déjà l'arrivée (geste continu)
+  targetQuat.setFromAxisAngle(new THREE.Vector3(0,1,0), cubeAngleFor(tgt)); }
+function onRotationComplete(){ currentBoard=navTarget; navDir=0;
   cubeGroup.quaternion.copy(targetQuat); assignFaces(); hidePorteProxies(); isAnimating=false; busy=false; updateUI(); refreshZoom();
   setTimeout(checkFusions,100); }
 
-function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===mod(currentBoard))); updateGoalTag(); }
+function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>{
+    const live = boardIsLive(i) || i===mod(currentBoard);   // on garde le dot courant visible
+    d.style.display = live ? '' : 'none';
+    d.classList.toggle('active',i===mod(currentBoard));
+  }); updateGoalTag(); }
 // Pastille "COMMANDE" : visible uniquement sur un plan à objectif-pièce.
 function updateGoalTag(){
   const el=document.getElementById('goalTag'); const g=goalFor(mod(currentBoard));
@@ -1882,8 +1923,12 @@ function fitCamera(){
 // (plateaux allégés), plus on s'approche. Lissé dans animate (comme targetCamZ de K5).
 let baseFitZ=CAM_Z, baseFitY=0, baseWorldPerPx=0.02, vFOVcache=42*Math.PI/180;
 let targetCamZ=CAM_Z, targetCamY=0;
-function refreshZoom(){
-  const d=boards[currentBoard]; if(!d){ targetCamZ=baseFitZ; targetCamY=baseFitY; return; }
+// v37 : refreshZoom(boardIdx) calcule la cible de zoom pour un plateau donné (par défaut le
+// courant). Appelé avec le plateau d'ARRIVÉE au lancement de la nav → le zoom vise déjà la
+// bonne échelle pendant la rotation : un seul geste continu, plus de "deux temps".
+function refreshZoom(boardIdx){
+  const bi = (boardIdx==null) ? currentBoard : mod(boardIdx);
+  const d=boards[bi]; if(!d){ targetCamZ=baseFitZ; targetCamY=baseFitY; return; }
   let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,n=0;
   for(let i=0;i<TOTAL;i++){ const p=d[i]; if(!p)continue; const {col,row}=getPos(i); const {x,y}=cellToLocal(col,row);
     minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++; }
@@ -1910,7 +1955,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   tickSwap(dt);
   tickRot(dt);
   // faces à rendre : la courante, et pendant la rotation aussi la cible (les autres masquées)
-  const targetBoard = isAnimating ? mod(currentBoard+navDir) : currentBoard;
+  const targetBoard = isAnimating ? navTarget : currentBoard;
   boards.forEach((arr,f)=>arr.forEach((p,si)=>{ if(!p||!p.mesh)return; const ud=p.mesh.userData;
     let shown = (f===currentBoard)||(isAnimating&&f===targetBoard);
     // pendant la rotation, les cases-portes sont rendues par leurs PROXIES fixes : on masque le vrai
@@ -1979,12 +2024,11 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     ud.glow.material.opacity=a*0.35;
     const s=1+porteBeamAmp*0.15*Math.sin(t*3+k); ud.glow.scale.set(s,1,s);
     g.visible=porteBeamAmp>0.02; });
-  // v36 : ZOOM lissé (façon K5). On tend doucement Z et Y vers la cible du plateau courant ;
-  // X reste fixé sur l'axe décalé (-PIVOT_X). Pendant la rotation cube, on retient le plein cadre.
-  const zGoal = isAnimating ? baseFitZ : targetCamZ;
-  const yGoal = isAnimating ? baseFitY : targetCamY;
-  camera.position.z += (zGoal-camera.position.z)*0.08;
-  camera.position.y += (yGoal-camera.position.y)*0.08;
+  // v37 : ZOOM EN UN SEUL TEMPS. La cible (targetCamZ/Y) est posée sur le plateau d'ARRIVÉE
+  // dès le lancement de la nav → la caméra tend vers elle PENDANT la rotation : zoom et
+  // rotation forment un geste unique, plus de "deux temps". X reste sur l'axe décalé -PIVOT_X.
+  camera.position.z += (targetCamZ-camera.position.z)*0.08;
+  camera.position.y += (targetCamY-camera.position.y)*0.08;
   camera.position.x += (-PIVOT_X-camera.position.x)*0.12;
   camera.lookAt(camera.position.x, camera.position.y, 0);
   renderer.render(scene,camera);
