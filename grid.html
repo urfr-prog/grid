@@ -368,6 +368,11 @@
   <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
   <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
   <button id="medBtn" class="opt-btn" aria-label="Médianes">▤</button>
+  <div id="slowmo" style="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);z-index:200;display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:18px;background:rgba(22,23,38,0.78);backdrop-filter:blur(6px);font:12px system-ui,sans-serif;color:rgba(180,200,220,0.9);">
+    <span style="opacity:0.7;">🐢</span>
+    <input id="tsSlider" type="range" min="5" max="100" value="100" style="width:120px;accent-color:#22d3ee;">
+    <span id="tsLabel" style="min-width:34px;text-align:right;font-variant-numeric:tabular-nums;">1.00×</span>
+  </div>
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
 
@@ -1081,7 +1086,8 @@ function refreshZoomSlide(){
   const aspect=window.innerWidth/window.innerHeight;
   const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
   const needZh=padH/(2*Math.tan(vFOVcache/2));
-  targetCamZ=Math.min(baseFitZ, Math.max(baseFitZ*0.45, Math.max(needZw,needZh)));
+  const zMin=Math.max(baseFitZ*0.45, needZh);  // v43 : ne pas passer sous la contrainte hauteur (écran large)
+  targetCamZ=Math.min(baseFitZ, Math.max(zMin, Math.max(needZw,needZh)));
   const cY=(minY+maxY)/2; targetCamY=baseFitY + cY*0.6;
   const cX=(minX+maxX)/2; targetCamX=-PIVOT_X + cX;
 }
@@ -1613,7 +1619,7 @@ function performChainFusion(iLo,iC,iHi,dir){
   let elapsed=0; const durMove=220,durFade=110,durAppear=240;
   const moveAnim=(now)=>{
     if(!moveAnim._last)moveAnim._last=now;
-    elapsed+=now-moveAnim._last; moveAnim._last=now;
+    elapsed+=(now-moveAnim._last)*TS; moveAnim._last=now;
     const p=Math.min(elapsed/durMove,1), e=easeInOutQuad(p);
     m1.position.lerpVectors(p1s,mid,e); m3.position.lerpVectors(p3s,mid,e);
     const sc=1-0.4*e; m1.scale.set(sc,sc,sc); m2.scale.set(sc,sc,sc); m3.scale.set(sc,sc,sc);
@@ -1622,7 +1628,7 @@ function performChainFusion(iLo,iC,iHi,dir){
   };
   const fadeAnim=(now)=>{
     if(!fadeAnim._last)fadeAnim._last=now;
-    elapsed+=now-fadeAnim._last; fadeAnim._last=now;
+    elapsed+=(now-fadeAnim._last)*TS; fadeAnim._last=now;
     const p=Math.min(elapsed/durFade,1);
     [m1,m2,m3].forEach(m=>m.traverse(c=>{ if(c.material&&'opacity'in c.material)c.material.opacity=(1-p); }));
     if(p<1)requestAnimationFrame(fadeAnim);
@@ -1631,7 +1637,7 @@ function performChainFusion(iLo,iC,iHi,dir){
       pC.mesh.scale.set(0.3,0.3,0.3); elapsed=0; fadeAnim._last=null;
       const appearAnim=(now2)=>{
         if(!appearAnim._last)appearAnim._last=now2;
-        elapsed+=now2-appearAnim._last; appearAnim._last=now2;
+        elapsed+=(now2-appearAnim._last)*TS; appearAnim._last=now2;
         const p2v=Math.min(elapsed/durAppear,1), e2=easeOutCubic(p2v);
         const sc2=0.3+0.7*e2; pC.mesh.scale.set(sc2,sc2,sc2);
         if(p2v<1)requestAnimationFrame(appearAnim);
@@ -1681,7 +1687,7 @@ function performRegress(toolIdx,tgtIdx,dir){
   let elapsed=0; const durMove=200,durFade=110,durAppear=220;
   const moveAnim=(now)=>{
     if(!moveAnim._last)moveAnim._last=now;
-    elapsed+=now-moveAnim._last; moveAnim._last=now;
+    elapsed+=(now-moveAnim._last)*TS; moveAnim._last=now;
     const p=Math.min(elapsed/durMove,1), e=easeInOutQuad(p);
     m1.position.lerpVectors(p1s,mid,e); m2.position.lerpVectors(p2s,mid,e);
     const sc=1-0.3*e; m1.scale.set(sc,sc,sc); m2.scale.set(sc,sc,sc);
@@ -1690,7 +1696,7 @@ function performRegress(toolIdx,tgtIdx,dir){
   };
   const fadeAnim=(now)=>{
     if(!fadeAnim._last)fadeAnim._last=now;
-    elapsed+=now-fadeAnim._last; fadeAnim._last=now;
+    elapsed+=(now-fadeAnim._last)*TS; fadeAnim._last=now;
     const p=Math.min(elapsed/durFade,1);
     m1.traverse(c=>{ if(c.material&&'opacity'in c.material)c.material.opacity=(1-p); });
     m2.traverse(c=>{ if(c.material&&'opacity'in c.material)c.material.opacity=(1-p); });
@@ -1709,7 +1715,7 @@ function performRegress(toolIdx,tgtIdx,dir){
       tgt.mesh.scale.set(0.3,0.3,0.3); elapsed=0; fadeAnim._last=null;
       const appearAnim=(now2)=>{
         if(!appearAnim._last)appearAnim._last=now2;
-        elapsed+=now2-appearAnim._last; appearAnim._last=now2;
+        elapsed+=(now2-appearAnim._last)*TS; appearAnim._last=now2;
         const p2v=Math.min(elapsed/durAppear,1), e2=easeOutCubic(p2v);
         const sc2=0.3+0.7*e2; tgt.mesh.scale.set(sc2,sc2,sc2);
         if(p2v<1)requestAnimationFrame(appearAnim);
@@ -1789,7 +1795,7 @@ function performTwinAbsorb(i1,i2){
   let elapsed=0; const durMove=240, durFade=140, durPulse=200;
   const moveAnim=(now)=>{
     if(!moveAnim._last)moveAnim._last=now;
-    elapsed+=now-moveAnim._last; moveAnim._last=now;
+    elapsed+=(now-moveAnim._last)*TS; moveAnim._last=now;
     const p=Math.min(elapsed/durMove,1), e=easeInOutQuad(p);
     ml.position.lerpVectors(lStart,wPos,e);
     const sc=1-0.45*e; ml.scale.set(sc,sc,sc);
@@ -1798,7 +1804,7 @@ function performTwinAbsorb(i1,i2){
   };
   const fadeAnim=(now)=>{
     if(!fadeAnim._last)fadeAnim._last=now;
-    elapsed+=now-fadeAnim._last; fadeAnim._last=now;
+    elapsed+=(now-fadeAnim._last)*TS; fadeAnim._last=now;
     const p=Math.min(elapsed/durFade,1);
     ml.traverse(c=>{ if(c.material&&'opacity'in c.material)c.material.opacity=(1-p); });
     if(p<1)requestAnimationFrame(fadeAnim);
@@ -1807,7 +1813,7 @@ function performTwinAbsorb(i1,i2){
       let pe=0; fadeAnim._last=null;
       const pulseAnim=(now2)=>{
         if(!pulseAnim._last)pulseAnim._last=now2;
-        pe+=now2-pulseAnim._last; pulseAnim._last=now2;
+        pe+=(now2-pulseAnim._last)*TS; pulseAnim._last=now2;
         const pp=Math.min(pe/durPulse,1);
         const k=Math.sin(pp*Math.PI);                 // 0 → 1 → 0
         const sc2=1+0.14*k; mw.scale.set(sc2,sc2,sc2);
@@ -1857,7 +1863,7 @@ function performFusion(i1,i2,dir){
   let elapsed=0; const durMove=200,durFade=110,durAppear=220;
   const moveAnim=(now)=>{
     if(!moveAnim._last)moveAnim._last=now;
-    elapsed+=now-moveAnim._last; moveAnim._last=now;
+    elapsed+=(now-moveAnim._last)*TS; moveAnim._last=now;
     const p=Math.min(elapsed/durMove,1), e=easeInOutQuad(p);
     m1.position.lerpVectors(p1s,mid,e); m2.position.lerpVectors(p2s,mid,e);
     const sc=1-0.3*e; m1.scale.set(sc,sc,sc); m2.scale.set(sc,sc,sc);
@@ -1866,7 +1872,7 @@ function performFusion(i1,i2,dir){
   };
   const fadeAnim=(now)=>{
     if(!fadeAnim._last)fadeAnim._last=now;
-    elapsed+=now-fadeAnim._last; fadeAnim._last=now;
+    elapsed+=(now-fadeAnim._last)*TS; fadeAnim._last=now;
     const p=Math.min(elapsed/durFade,1);
     m1.traverse(c=>{ if(c.material&&'opacity'in c.material)c.material.opacity=(1-p); });
     m2.traverse(c=>{ if(c.material&&'opacity'in c.material)c.material.opacity=(1-p); });
@@ -1890,7 +1896,7 @@ function performFusion(i1,i2,dir){
       p1.mesh.scale.set(0.3,0.3,0.3); elapsed=0; fadeAnim._last=null;
       const appearAnim=(now2)=>{
         if(!appearAnim._last)appearAnim._last=now2;
-        elapsed+=now2-appearAnim._last; appearAnim._last=now2;
+        elapsed+=(now2-appearAnim._last)*TS; appearAnim._last=now2;
         const p2v=Math.min(elapsed/durAppear,1), e2=easeOutCubic(p2v);
         const sc2=0.3+0.7*e2; p1.mesh.scale.set(sc2,sc2,sc2);
         if(p2v<1)requestAnimationFrame(appearAnim);
@@ -1936,7 +1942,14 @@ function migrateDown(result){
 function flashFusion(p){ if(!p.mesh)return; const g=p.mesh.userData.glow;
   g.material.color.set(0xffffff); g.material.opacity=0.85; p.mesh.scale.set(1.15,1.15,1.15);
   setTimeout(()=>{ p.mesh.scale.set(1,1,1); g.material.opacity=0; },300); }
-const clock=new THREE.Clock(); let last=0;
+const clock=new THREE.Clock(); let last=0, tScaled=0;
+// MODE RALENTI (debug 3D/zoom) : TS multiplie le dt des ticks ET les coeffs de lissage
+// caméra/slerp (constants par frame). 1 = vitesse normale, 0.05 = très lent.
+let TS=1;
+(function(){ const sl=document.getElementById('tsSlider'), lab=document.getElementById('tsLabel');
+  if(!sl)return; const upd=()=>{ TS=Math.max(0.05,sl.value/100); lab.textContent=TS.toFixed(2)+'×'; };
+  sl.addEventListener('input',upd); upd();
+})();
 // Cadre la pile pour qu'elle tienne à l'écran quel que soit le format (portrait mobile inclus).
 function fitCamera(){
   const w=window.innerWidth, h=window.innerHeight, aspect=w/h;
@@ -1987,7 +2000,11 @@ function refreshZoom(boardIdx){
   const aspect=window.innerWidth/window.innerHeight;
   const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
   const needZh=padH/(2*Math.tan(vFOVcache/2));
-  const z=Math.min(baseFitZ, Math.max(baseFitZ*0.45, Math.max(needZw,needZh)));
+  // v43 : la borne basse du zoom (= rapprochement max) ne doit JAMAIS passer sous ce que la
+  // HAUTEUR autorise, sinon sur écran large (Mac, aspect>1) la grille déborde en haut/bas.
+  // On ne descend donc pas sous needZh ; et jamais sous 0.45*baseFitZ (confort iPhone).
+  const zMin=Math.max(baseFitZ*0.45, needZh);
+  const z=Math.min(baseFitZ, Math.max(zMin, Math.max(needZw,needZh)));
   targetCamZ=z;
   // recentre verticalement sur le barycentre du contenu, en conservant le shift bande utile.
   const cY=(minY+maxY)/2;
@@ -1999,10 +2016,10 @@ function refreshZoom(boardIdx){
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); fitCamera();
 window.addEventListener('resize',fitCamera);
-function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const dt=t-last; last=t;
+function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const dtRaw=t-last; last=t; const dt=dtRaw*TS; tScaled+=dt;
   if(isAnimating){
     // ROTATION DU CUBE : slerp doux vers l'orientation cible (façon mada)
-    cubeGroup.quaternion.slerp(targetQuat,0.12);
+    cubeGroup.quaternion.slerp(targetQuat,0.12*TS);
     if(1-Math.abs(cubeGroup.quaternion.dot(targetQuat))<0.0001){ cubeGroup.quaternion.copy(targetQuat); onRotationComplete(); }
   }
   tickSwap(dt);
@@ -2017,7 +2034,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     if(!shown) return;
     if(!swapAnim){ p.mesh.position.z = SAT_LIFT; }
     // balancement décoratif (suspendu pendant rotation cube / fusion / autres anims bloquantes ; ET sur la cible : immobile).
-    if(p.mesh.visible&&!isAnimating&&!swapAnim&&!busy&&!(rotAnim&&rotAnim.mesh===p.mesh)&&p.baseQuat&&!p.target){ const ph=t*1.2+si*1.7;
+    if(p.mesh.visible&&!isAnimating&&!swapAnim&&!busy&&!(rotAnim&&rotAnim.mesh===p.mesh)&&p.baseQuat&&!p.target){ const ph=tScaled*1.2+si*1.7;
       const amp=Math.min(1,(t-(p._settle||0)));
       const bq=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.cos(ph*0.7)*0.008*amp)); p.mesh.quaternion.copy(p.baseQuat).multiply(bq); }
     const st=p.state||'white';
@@ -2026,10 +2043,10 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     ud.haloSprite.material.opacity = 0;
     ud.glowMesh.material.opacity = 0;
     if(st==='cosmic'){
-      drawCosmicRing(ud.ringCanvas,t*Math.PI/2);ud.ringTex.needsUpdate=true;ud.ringMesh.material.opacity=1;
+      drawCosmicRing(ud.ringCanvas,tScaled*Math.PI/2);ud.ringTex.needsUpdate=true;ud.ringMesh.material.opacity=1;
       ud.edgeLines.material.color.set(0x8338ec);ud.edgeLines.material.opacity=EDGE_OP;
     } else if(st==='supernovae'||st==='plasma'){
-      drawSupernovaeRing(ud.ringCanvas,t*Math.PI*(st==='plasma'?1:2/3));ud.ringTex.needsUpdate=true;ud.ringMesh.material.opacity=1;
+      drawSupernovaeRing(ud.ringCanvas,tScaled*Math.PI*(st==='plasma'?1:2/3));ud.ringTex.needsUpdate=true;ud.ringMesh.material.opacity=1;
       ud.edgeLines.material.color.set(st==='plasma'?0xff2060:0xff8c00);ud.edgeLines.material.opacity=EDGE_OP;
     } else if(st==='emerald'){
       ud.ringMesh.material.opacity=0;
@@ -2055,14 +2072,14 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     const m=lockedPiece.mesh; m.visible=true;
     const fz=(lockFloatBase?lockFloatBase.z:camera.position.z-3.0);
     m.position.set(camera.position.x,camera.position.y,fz); m.quaternion.identity();
-    const pulse=1.12+Math.sin(t*4)*0.03; m.scale.set(pulse,pulse,pulse);
+    const pulse=1.12+Math.sin(tScaled*4)*0.03; m.scale.set(pulse,pulse,pulse);
     const ud=m.userData; if(ud&&ud.edgeLines){ ud.edgeLines.material.opacity=0.85; ud.faceMesh.material.opacity=1; }
   }
   // PROXIES-PORTES fixes : animés pendant la rotation, immobiles dans l'espace.
   porteProxies.forEach((m,k)=>{ const ud=m.userData; m.visible=true; const st=ud._porteState||'white';
-    if(st==='cosmic'){ drawCosmicRing(ud.ringCanvas,t*Math.PI/2+k*0.6); ud.ringTex.needsUpdate=true; ud.ringMesh.material.opacity=1;
+    if(st==='cosmic'){ drawCosmicRing(ud.ringCanvas,tScaled*Math.PI/2+k*0.6); ud.ringTex.needsUpdate=true; ud.ringMesh.material.opacity=1;
       ud.edgeLines.material.color.set(0x8338ec); }
-    else if(st==='supernovae'||st==='plasma'){ drawSupernovaeRing(ud.ringCanvas,t*Math.PI*(st==='plasma'?1:2/3)); ud.ringTex.needsUpdate=true; ud.ringMesh.material.opacity=1;
+    else if(st==='supernovae'||st==='plasma'){ drawSupernovaeRing(ud.ringCanvas,tScaled*Math.PI*(st==='plasma'?1:2/3)); ud.ringTex.needsUpdate=true; ud.ringMesh.material.opacity=1;
       ud.edgeLines.material.color.set(st==='plasma'?0xff2060:0xff8c00); }
     else if(st==='emerald'){ ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0x34d399); }
     else if(st==='gold'){ ud.ringMesh.material.opacity=0; ud.edgeLines.material.color.set(0xffd700); }
@@ -2078,7 +2095,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // v40 : le glissement n'utilise PLUS de dézoom brutal. À la place, refreshZoom est recalculé
   // en continu sur les positions VISUELLES réelles pendant le slide (voir applySlide) → le zoom
   // principal SUIT l'étendue qui passe de 3 à 4/5 colonnes. Ici, simple lissage vers targetCamZ.
-  let zGoal=targetCamZ;
+  let zGoal=targetCamZ, bell=0;
   if(isAnimating){
     const aspect=window.innerWidth/window.innerHeight;
     const halfSweep=(FACE_W/2+Math.abs(PIVOT_X))+0.4*CELL_W;
@@ -2086,17 +2103,16 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     const dotv=Math.min(1,Math.abs(cubeGroup.quaternion.dot(targetQuat)));
     const angLeft=2*Math.acos(dotv);                  // radians restants (≈π/2 au départ)
     const prog=1-Math.min(1,angLeft/(Math.PI/2));     // 0→1
-    const bell=Math.sin(Math.min(1,Math.max(0,prog))*Math.PI); // 0 aux bords, 1 au milieu
+    bell=Math.sin(Math.min(1,Math.max(0,prog))*Math.PI); // 0 aux bords, 1 au milieu
     zGoal=targetCamZ + bell*Math.max(0, zSafe-targetCamZ);
   }
-  // v37 : ZOOM EN UN SEUL TEMPS. La cible (targetCamZ/Y) est posée sur le plateau d'ARRIVÉE
-  // dès le lancement de la nav → la caméra tend vers elle PENDANT la rotation. X sur -PIVOT_X.
-  camera.position.z += (zGoal-camera.position.z)*0.12;
-  camera.position.y += (targetCamY-camera.position.y)*0.08;
-  // v41 : pendant la rotation cube, l'axe écran doit rester sur col3/4 (-PIVOT_X) sinon la
-  // bascule se décale. Hors rotation, on suit targetCamX (recentré sur les colonnes occupées).
-  const xGoal=isAnimating ? -PIVOT_X : targetCamX;
-  camera.position.x += (xGoal-camera.position.x)*0.12;
+  // v41b : X partage LA MÊME cloche que Z. Au pic de l'arc (bell=1) on vise -PIVOT_X (axe
+  // de bascule col3/4) ; aux extrémités (bell=0) on vise targetCamX (recentré sur les colonnes
+  // occupées). Une seule courbe continue → Z, Y et X convergent ensemble, plus de désynchro.
+  const xGoal=targetCamX + bell*(-PIVOT_X-targetCamX);
+  camera.position.z += (zGoal-camera.position.z)*0.12*TS;
+  camera.position.y += (targetCamY-camera.position.y)*0.08*TS;
+  camera.position.x += (xGoal-camera.position.x)*0.12*TS;
   camera.lookAt(camera.position.x, camera.position.y, 0);
   renderer.render(scene,camera);
 }
