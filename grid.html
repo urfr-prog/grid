@@ -379,6 +379,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const COLS=5, ROWS=8, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
+// ── BRIDAGE V44 (interrupteurs, rien supprimé) ──
+//   TAP_ROTATION false : le tap ne fait plus tourner le domino
+//   PORTE_REFILL false : plus de retour/comblage ni d'aimant dans la barre des portes
+//   Remettre à true pour réactiver.
+const TAP_ROTATION=false, PORTE_REFILL=false;
 
 const STATE_ORDER=['white','silver','gold','emerald','cosmic','supernovae','plasma'];
 const MOVE_DIRS={ white:null, silver:[[1,0],[-1,0]], gold:[[1,1],[1,-1],[-1,1],[-1,-1]],
@@ -1351,12 +1356,8 @@ function cardinalNeighbors(i){ const r=[]; const x=colOf(i),y=rowOf(i);
 
 let _fuseScheduled=false;
 // ── BRIDAGE V44 (interrupteurs, rien supprimé) ──
-//   TAP_ROTATION false  : le tap ne fait plus tourner le domino
-//   PORTE_REFILL false  : plus de retour/comblage systématique dans la barre des portes
-//                         (inclut l'aimant qui ne servait qu'à réalimenter les portes)
+//   Voir déclaration en tête de script (TAP_ROTATION, PORTE_REFILL).
 //   Toutes les fusions (régresseur, chaîne, simple, twin) restent ACTIVES sur les 2 axes.
-//   Remettre à true pour réactiver une mécanique.
-const TAP_ROTATION=false, PORTE_REFILL=false;
 
 function checkFusions(){
   // Si on est occupé (anim/nav/swap en cours), NE PAS abandonner : se redemander plus tard.
