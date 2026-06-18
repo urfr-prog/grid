@@ -1352,11 +1352,11 @@ function cardinalNeighbors(i){ const r=[]; const x=colOf(i),y=rowOf(i);
 let _fuseScheduled=false;
 // ── BRIDAGE V44 (interrupteurs, rien supprimé) ──
 //   TAP_ROTATION false  : le tap ne fait plus tourner le domino
-//   MAGNET       false  : plus d'attraction magnétique
 //   PORTE_REFILL false  : plus de retour/comblage systématique dans la barre des portes
-//   FUSION_AXIS  'h'     : recherche de fusion bridée sur l'HORIZONTAL (médianes) seul
-//   Remettre à true / 'both' pour réactiver une mécanique.
-const TAP_ROTATION=false, MAGNET=false, PORTE_REFILL=false, FUSION_AXIS='h';
+//                         (inclut l'aimant qui ne servait qu'à réalimenter les portes)
+//   Toutes les fusions (régresseur, chaîne, simple, twin) restent ACTIVES sur les 2 axes.
+//   Remettre à true pour réactiver une mécanique.
+const TAP_ROTATION=false, PORTE_REFILL=false;
 
 function checkFusions(){
   // Si on est occupé (anim/nav/swap en cours), NE PAS abandonner : se redemander plus tard.
@@ -1381,7 +1381,7 @@ function checkFusions(){
       const fL=getExposedFace(d[i],'right'), fR=getExposedFace(d[iR],'left');
       if(fL&&fR&&fL===fR){ const r=regressPair(d[i],d[iR],i,iR); if(r){ performRegress(r.toolIdx,r.tgtIdx,'h'); return; } }
     }
-    const iB=(FUSION_AXIS!=='h'&&y<ROWS-1)?i+COLS:-1;
+    const iB=(y<ROWS-1)?i+COLS:-1;
     if(iB!==-1&&d[iB]){
       const fT=getExposedFace(d[i],'bottom'), fB=getExposedFace(d[iB],'top');
       if(fT&&fB&&fT===fB){ const r=regressPair(d[i],d[iB],i,iB); if(r){ performRegress(r.toolIdx,r.tgtIdx,'v'); return; } }
@@ -1405,7 +1405,7 @@ function checkFusions(){
       }
     }
     // vertical : haut + bas
-    if(FUSION_AXIS!=='h'&&y>0&&y<ROWS-1){ const iT=i-COLS, iB=i+COLS; const dT=d[iT], dB=d[iB];
+    if(y>0&&y<ROWS-1){ const iT=i-COLS, iB=i+COLS; const dT=d[iT], dB=d[iB];
       if(dT&&dB&&!isRegress(dT)&&!isRegress(dB)){
         const a=getExposedFace(dT,'bottom'), b=getExposedFace(c,'top'), e=getExposedFace(c,'bottom'), f=getExposedFace(dB,'top');
         if(a&&b&&a===b&&e&&f&&e===f){ performChainFusion(iT,i,iB,'v'); return; }
@@ -1420,7 +1420,7 @@ function checkFusions(){
       const fL=getExposedFace(d[i],'right'), fR=getExposedFace(d[iR],'left');
       if(fL&&fR&&fL===fR&&!(isRegress(d[i])&&isRegress(d[iR]))){ performFusion(i,iR,'h'); return; }
     }
-    const iB=(FUSION_AXIS!=='h'&&y<ROWS-1)?i+COLS:-1;
+    const iB=(y<ROWS-1)?i+COLS:-1;
     if(iB!==-1&&d[iB]){
       const fT=getExposedFace(d[i],'bottom'), fB=getExposedFace(d[iB],'top');
       if(fT&&fB&&fT===fB&&!(isRegress(d[i])&&isRegress(d[iB]))){ performFusion(i,iB,'v'); return; }
@@ -1429,7 +1429,7 @@ function checkFusions(){
   // (v11 : l'état n'étant plus une condition de fusion, le flash rouge "même icône / état
   //  différent" n'a plus lieu d'être — ce contact fusionne désormais.)
   // tenter l'attraction magnétique (rapproche une paire séparée si couloir vide)
-  if(MAGNET && tryMagnet()) return;        // un aimant agit → il rappellera checkFusions après son anim
+  if(PORTE_REFILL && tryMagnet()) return;        // un aimant agit → il rappellera checkFusions après son anim
   // ── ÉTAT STABLE : plus aucune fusion ni aimant possible. C'est SEULEMENT maintenant qu'on
   // comble la barre de portes (v36). Si le comblage a réellement aspiré une pièce, l'état a
   // changé → on relance UNE passe (un refill peut créer une fusion légitime). Sinon, fini.
