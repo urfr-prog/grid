@@ -748,6 +748,13 @@ function createDominoMesh(face1,face2,state,regress,rotation){ const grp=new THR
   frameShape.holes.push(rrShape(SZ-2*EDGE_W, SZ-2*EDGE_W, Math.max(0.01,RR-EDGE_W)));
   const edge=new THREE.Mesh(new THREE.ShapeGeometry(frameShape),new THREE.MeshBasicMaterial({color:edgeCol,transparent:true,opacity:0.18,side:THREE.DoubleSide,depthWrite:false}));
   edge.position.z=SAT_DEPTH/2+0.002; grp.add(edge);
+  // ── LISERÉ-PORTE (marquage visuel des cases-portes) : épais, bleu vif, caché par défaut.
+  //    Activé dans placePiece() uniquement si la case est une porte.
+  const PEDGE_W=0.045;
+  const pframe=rrShape(SZ+0.03,SZ+0.03,RR);
+  pframe.holes.push(rrShape(SZ+0.03-2*PEDGE_W,SZ+0.03-2*PEDGE_W,Math.max(0.01,RR-PEDGE_W)));
+  const porteEdge=new THREE.Mesh(new THREE.ShapeGeometry(pframe),new THREE.MeshBasicMaterial({color:0x38bdf8,transparent:true,opacity:0.95,side:THREE.DoubleSide,depthWrite:false}));
+  porteEdge.position.z=SAT_DEPTH/2+0.004; porteEdge.visible=false; grp.add(porteEdge);
   const glow=new THREE.Mesh(new THREE.ShapeGeometry(rrShape(SZ+0.12,SZ+0.12,RR+0.04)),new THREE.MeshBasicMaterial({color:edgeCol,transparent:true,opacity:0})); glow.position.z=-SAT_DEPTH/2-0.01; grp.add(glow);
   // ── ÉTATS RICHES (structure portée de mkSat / prisme) ──
   // ombre portée douce (radiale) derrière la pièce
@@ -764,7 +771,7 @@ function createDominoMesh(face1,face2,state,regress,rotation){ const grp=new THR
   const haloTex=new THREE.CanvasTexture(haloCv);
   const haloSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:haloTex,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); haloSprite.scale.set(SZ*2.8,SZ*2.8,1); grp.add(haloSprite);
   // userData mappé aux noms du prisme (edgeLines/glowMesh) pour une boucle animate identique.
-  grp.userData={faceMesh,edge,glow,edgeLines:edge,glowMesh:glow,shadow,ringCanvas:ringCv,ringTex,ringMesh,haloCanvas:haloCv,haloTex,haloSprite,isDomino:true,regress:!!regress}; return grp;
+  grp.userData={faceMesh,edge,glow,edgeLines:edge,glowMesh:glow,shadow,ringCanvas:ringCv,ringTex,ringMesh,haloCanvas:haloCv,haloTex,haloSprite,isDomino:true,regress:!!regress,porteEdge}; return grp;
 }
 
 let boards=[], currentBoard=0, moves=0;
@@ -795,6 +802,7 @@ function syncPortes(srcBoard){
       // (re)crée un mesh propre à cette face avec les valeurs de la source
       if(cur&&cur.mesh) removeDomino(cur.mesh);
       const mesh=createDominoMesh(src.face1,src.face2,src.state,src.regress,src.rotation||0);
+      if(mesh.userData.porteEdge) mesh.userData.porteEdge.visible=true;
       mesh.visible=false; addDomino(mesh,f);
       boards[f][idx]={ state:src.state,state1:src.state1,state2:src.state2,
         face1:src.face1,face2:src.face2,rotation:src.rotation||0,
@@ -820,6 +828,7 @@ function showPorteProxies(){
     if(p.mesh) p.mesh.visible=false;                       // masque le vrai (il va tourner avec la face)
     const {col,row}=getPos(idx); const {x,y}=cellToLocal(col,row);
     const proxy=createDominoMesh(p.face1,p.face2,p.state,p.regress,p.rotation||0);
+    if(proxy.userData.porteEdge) proxy.userData.porteEdge.visible=true;
     proxy.position.set(x-PIVOT_X,y,SAT_LIFT); proxy.quaternion.identity();
     proxy.userData._porteState=p.state;                    // pour l'anim de ring (cosmic, etc.)
     proxy.userData._porteIdx=idx;
@@ -890,6 +899,7 @@ function placePiece(p){ if(!p||!p.mesh)return;
   // baseQuat = identité (le balancement décoratif s'appuie dessus). On régénère la texture
   // pour que l'icône reflète p.rotation.
   p.mesh.position.set(x,y,SAT_LIFT); p.mesh.quaternion.identity(); p.baseQuat=new THREE.Quaternion(); p._settle=clock.getElapsedTime();
+  if(p.mesh.userData.porteEdge) p.mesh.userData.porteEdge.visible=isPorteIdx(i);
   refreshTex(p);
 }
 function mod(n){ return ((n%NBOARDS)+NBOARDS)%NBOARDS; }
@@ -1430,7 +1440,7 @@ function checkFusions(){
   // (v11 : l'état n'étant plus une condition de fusion, le flash rouge "même icône / état
   //  différent" n'a plus lieu d'être — ce contact fusionne désormais.)
   // tenter l'attraction magnétique (rapproche une paire séparée si couloir vide)
-  if(PORTE_REFILL && tryMagnet()) return;        // un aimant agit → il rappellera checkFusions après son anim
+  if(tryMagnet()) return;        // un aimant agit → il rappellera checkFusions après son anim
   // ── ÉTAT STABLE : plus aucune fusion ni aimant possible. C'est SEULEMENT maintenant qu'on
   // comble la barre de portes (v36). Si le comblage a réellement aspiré une pièce, l'état a
   // changé → on relance UNE passe (un refill peut créer une fusion légitime). Sinon, fini.
