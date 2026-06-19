@@ -328,7 +328,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v55 · Portes : création si slots libres + partage inter-layers (8 plateaux)</title>
+<title>ADAM Stack — v56 · Fix doublon fantôme au centre (copies de porte positionnées)</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -903,6 +903,8 @@ function syncPortes(srcBoard){
       if(cur&&cur.mesh) removeDomino(cur.mesh);
       const mesh=createDominoMesh(src.face1,src.face2,src.state,src.regress,src.rotation||0);
       if(mesh.userData.porteEdge) mesh.userData.porteEdge.visible=true;
+      // v56 : POSITIONNER le mesh à sa case (sinon il reste à (0,0,0) = centre → doublon fantôme).
+      { const {col,row}=getPos(idx); const {x,y}=cellToLocal(col,row); mesh.position.set(x,y,SAT_LIFT); mesh.quaternion.identity(); }
       mesh.visible=false; addDomino(mesh,key);
       boards[key][idx]={ state:src.state,state1:src.state1,state2:src.state2,
         face1:src.face1,face2:src.face2,rotation:src.rotation||0,
