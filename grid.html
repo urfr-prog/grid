@@ -384,6 +384,9 @@ const COLS=5, ROWS=8, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 //   PORTE_REFILL false : plus de retour/comblage ni d'aimant dans la barre des portes
 //   Remettre à true pour réactiver.
 const TAP_ROTATION=false, PORTE_REFILL=false;
+// v45 EXPÉRIMENTAL : le tap commute n'importe quel domino LIBRE en porte (toggle).
+// Re-tap d'une porte créée par tap → la retire. Tap sur une porte d'origine → feedback, rien.
+const TAP_COMMUTE_PORTE=true;
 
 const STATE_ORDER=['white','silver','gold','emerald','cosmic','supernovae','plasma'];
 const MOVE_DIRS={ white:null, silver:[[1,0],[-1,0]], gold:[[1,1],[1,-1],[-1,1],[-1,-1]],
@@ -599,7 +602,10 @@ const DEMO_LEVEL=[
 
 // Cases-portes : positions fixes partagées par tous les plateaux (idx grille 5×9).
 // idx 7 = col 2, row 1 (porte haute centrale). Multi-porte dès le départ : tableau.
-const PORTE_POSITIONS=[21,22,23];
+// v46 : PLUS DE PORTES NATIVES. La barre fixe 21/22/23 est supprimée — toute porte est
+// désormais un CHOIX du joueur (tap). PORTE_POSITIONS démarre vide, max MAX_PORTES portes.
+let PORTE_POSITIONS=[];
+const MAX_PORTES=4;
 function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
 
 // Motifs ARTY symétriques, centrés sur la rangée des PORTES (row4).
@@ -782,7 +788,7 @@ function buildBoards(){
   DEMOS.forEach((demo,f)=>{ demo.forEach(([idx,state,face1,face2,rotation,regress,target])=>{
     const mesh=createDominoMesh(face1,face2,state,regress,rotation||0); mesh.visible=false; addDomino(mesh,f);
     boards[f][idx]={state,state1:state,state2:state,face1,face2,rotation:rotation||0,regress:!!regress,target:!!target,mesh,face:f}; }); });
-  syncPortes(currentBoard);   // propage la définition-porte initiale (plateau 0) sur tous les plateaux
+  // v46 : aucune porte au démarrage — les positions 21/22/23 sont des dominos libres normaux.
 }
 
 // ─── PORTE : propagation logique inter-plateaux (règle ADAM Portes) ───
@@ -809,6 +815,30 @@ function syncPortes(srcBoard){
         regress:!!src.regress,target:!!src.target,mesh,face:f };
     }
   }
+}
+
+// v45/46 — COMMUTATION PORTE PAR TAP (toggle).
+// Tap sur un domino LIBRE → sa case devient une porte (partagée sur les 4 plateaux).
+// Re-tap sur une porte → la retire (redevient case libre locale).
+// Plafond : MAX_PORTES portes simultanées ; au-delà, feedback (flash + vibration), aucun effet.
+function commutePorte(i){
+  if(i<0) return;
+  if(PORTE_POSITIONS.includes(i)){            // porte existante → on la retire
+    PORTE_POSITIONS=PORTE_POSITIONS.filter(x=>x!==i);
+    for(let f=0;f<NBOARDS;f++){ const p=boards[f][i]; if(p&&p.mesh.userData.porteEdge) p.mesh.userData.porteEdge.visible=false; }
+    if(navigator.vibrate) navigator.vibrate(12);
+    return;
+  }
+  const p=curBoard()[i]; if(!p) return;       // case vide : rien à commuter
+  if(PORTE_POSITIONS.length>=MAX_PORTES){      // plafond atteint
+    flashFusion(p);
+    if(navigator.vibrate) navigator.vibrate(18);
+    return;
+  }
+  PORTE_POSITIONS.push(i);                     // nouvelle porte partagée
+  if(p.mesh.userData.porteEdge) p.mesh.userData.porteEdge.visible=true;
+  syncPortes(currentBoard);                    // propage la définition sur les 4 plateaux
+  if(navigator.vibrate) navigator.vibrate(18);
 }
 
 // ─── PORTES FIXES : « triche » de rendu pendant la rotation du cube ───
@@ -1316,10 +1346,12 @@ canvas.addEventListener('pointerup',e=>{
     dragPiece=null; dragAxis=null; return;
   }
   if(!moved && dist<12 && dt<300 && dragPiece){
-    // TAP → rotation selon moitié gauche/droite du domino (bridé V44)
+    // TAP → rotation (bridé V44) OU commutation porte (expérimental V45)
     if(TAP_ROTATION){
       const sx=screenXOf(dragPiece.mesh);
       rotatePiece(curBoard().indexOf(dragPiece), e.clientX>sx);
+    } else if(TAP_COMMUTE_PORTE){
+      commutePorte(curBoard().indexOf(dragPiece));
     }
     dragPiece=null; dragAxis=null; return;
   }
