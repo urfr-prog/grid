@@ -828,7 +828,7 @@ function commutePorte(i){
   if(i<0) return;
   if(PORTE_POSITIONS.includes(i)){            // porte existante → on la retire
     PORTE_POSITIONS=PORTE_POSITIONS.filter(x=>x!==i);
-    for(let f=0;f<NBOARDS;f++){ const p=boards[f][i]; if(p&&p.mesh.userData.porteEdge) p.mesh.userData.porteEdge.visible=false; }
+    for(let f=0;f<NBOARDS;f++){ const p=boards[f][i]; if(p) placePiece(p); }  // réaligne le liseré (isPorteIdx désormais faux)
     if(navigator.vibrate) navigator.vibrate(12);
     return;
   }
@@ -839,7 +839,7 @@ function commutePorte(i){
     return;
   }
   PORTE_POSITIONS.push(i);                     // nouvelle porte partagée
-  if(p.mesh.userData.porteEdge) p.mesh.userData.porteEdge.visible=true;
+  placePiece(p);                               // v46 : réaligne le liseré-porte du domino COURANT (porteEdge.visible=isPorteIdx)
   syncPortes(currentBoard);                    // propage la définition sur les 4 plateaux
   if(navigator.vibrate) navigator.vibrate(18);
 }
