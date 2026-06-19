@@ -328,7 +328,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v56 · Fix doublon fantôme au centre (copies de porte positionnées)</title>
+<title>ADAM Stack — v58 · Portes (modèle A1) : pose libre, occupants sauvegardés et restaurés</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -640,6 +640,9 @@ const DEMO_LEVEL=[
 // désormais un CHOIX du joueur (tap). PORTE_POSITIONS démarre vide, max MAX_PORTES portes.
 let PORTE_POSITIONS=[];
 const MAX_PORTES=4;
+// v58 (modèle A1) : tiroir de sauvegarde des dominos écrasés par une porte. Indexé
+// porteStash[idx][key] = état du domino d'origine. Restauré au retrait SI la case est libre.
+let porteStash={};
 function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
 
 // Motifs ARTY symétriques, centrés sur la rangée des PORTES (row4).
@@ -899,6 +902,10 @@ function syncPortes(srcBoard){
       const key=boardKey(ly,f); if(!boards[key]) continue;
       const cur=boards[key][idx];
       if(!src){ if(cur){ if(cur.mesh)removeDomino(cur.mesh); boards[key][idx]=null; } continue; }
+      // v58 (A1) : avant d'écraser un occupant d'ORIGINE (pas une copie-porte), le sauvegarder.
+      if(cur && !cur._porteCopy){ if(!porteStash[idx]) porteStash[idx]={};
+        porteStash[idx][key]={ state:cur.state,state1:cur.state1,state2:cur.state2,
+          face1:cur.face1,face2:cur.face2,rotation:cur.rotation||0,regress:!!cur.regress,target:!!cur.target }; }
       // (re)crée un mesh propre à ce plateau avec les valeurs de la source
       if(cur&&cur.mesh) removeDomino(cur.mesh);
       const mesh=createDominoMesh(src.face1,src.face2,src.state,src.regress,src.rotation||0);
@@ -908,7 +915,7 @@ function syncPortes(srcBoard){
       mesh.visible=false; addDomino(mesh,key);
       boards[key][idx]={ state:src.state,state1:src.state1,state2:src.state2,
         face1:src.face1,face2:src.face2,rotation:src.rotation||0,
-        regress:!!src.regress,target:!!src.target,mesh,face:f,layer:ly,key };
+        regress:!!src.regress,target:!!src.target,mesh,face:f,layer:ly,key,_porteCopy:true };
     } }
   }
 }
@@ -921,14 +928,25 @@ function commutePorte(i){
   if(i<0) return;
   if(PORTE_POSITIONS.includes(i)){            // porte existante → on la retire
     PORTE_POSITIONS=PORTE_POSITIONS.filter(x=>x!==i);
-    // v55 : la porte redevient une case LIBRE LOCALE. Copies propagées supprimées sur
-    // les 7 autres plateaux (toutes faces, tous layers) ; la case courante est conservée.
+    // v58 (A1) : la porte redevient une case LIBRE LOCALE. Sur les 7 autres plateaux, on retire
+    // la copie-porte ; si un domino d'origine avait été écrasé ET que la case est LIBRE, on le
+    // restaure depuis le tiroir. La case courante (source) est conservée telle quelle.
     for(let ly=0;ly<NLAYERS;ly++){ for(let f=0;f<NBOARDS;f++){
       const key=boardKey(ly,f); if(!boards[key]) continue;
       if(ly===currentLayer && f===currentBoard){ const p=boards[key][i]; if(p) placePiece(p); continue; }
       const cur=boards[key][i];
       if(cur){ if(cur.mesh) removeDomino(cur.mesh); boards[key][i]=null; }
+      const saved = porteStash[i] && porteStash[i][key];
+      if(saved && !boards[key][i]){            // A1 : restaure seulement si la case est libre
+        const m=createDominoMesh(saved.face1,saved.face2,saved.state,saved.regress,saved.rotation||0);
+        const {col,row}=getPos(i); const {x,y}=cellToLocal(col,row); m.position.set(x,y,SAT_LIFT); m.quaternion.identity();
+        m.visible=false; addDomino(m,key);
+        boards[key][i]={ state:saved.state,state1:saved.state1,state2:saved.state2,
+          face1:saved.face1,face2:saved.face2,rotation:saved.rotation||0,
+          regress:!!saved.regress,target:!!saved.target,mesh:m,face:f,layer:ly,key };
+      }
     } }
+    if(porteStash[i]) delete porteStash[i];     // tiroir vidé pour cette porte
     if(navigator.vibrate) navigator.vibrate(12);
     return;
   }
@@ -938,13 +956,8 @@ function commutePorte(i){
     if(navigator.vibrate) navigator.vibrate(18);
     return;
   }
-  // v55 : porte autorisée UNIQUEMENT si la case i est LIBRE sur les 7 autres plateaux
-  // (n'écrase rien). Sinon feedback (flash + vibration), aucun effet.
-  for(let ly=0;ly<NLAYERS;ly++){ for(let f=0;f<NBOARDS;f++){
-    const key=boardKey(ly,f); if(!boards[key]) continue;
-    if(ly===currentLayer && f===currentBoard) continue;
-    if(boards[key][i]){ flashFusion(p); if(navigator.vibrate) navigator.vibrate(18); return; }
-  } }
+  // v58 (A1) : pose LIBRE — la porte peut écraser des occupants ; ils sont sauvegardés par
+  // syncPortes et restaurés au retrait. Plus de garde « slots vides ».
   PORTE_POSITIONS.push(i);                     // nouvelle porte partagée (8 plateaux)
   placePiece(p);                               // réaligne le liseré-porte du domino COURANT
   syncPortes(currentBoard);                    // propage la définition sur les 8 plateaux
@@ -1264,6 +1277,10 @@ function refreshZoomSlide(){
     else if(dragAxis==='vertical' && col===dragCol){ row=((row+steps)%ROWS+ROWS)%ROWS; }
     acc(col,row);
   }
+  // v56 : ZOOM COMMUN — inclure le(s) AUTRE(S) layer(s) à la même face (sans décalage : seul
+  // l'actif glisse). Même base de mesure que refreshZoom → plus de recul de zoom au lâcher.
+  for(let L=0;L<NLAYERS;L++){ if(L===currentLayer) continue; const da=boards[boardKey(L,currentBoard)]; if(!da)continue;
+    for(let i=0;i<TOTAL;i++){ if(!da[i])continue; acc(colOf(i),rowOf(i)); } }
   if(n===0)return;
   const padW=(maxX-minX)+2.0*CELL_W, padH=(maxY-minY)+2.0*CELL_W;
   const aspect=window.innerWidth/window.innerHeight;
