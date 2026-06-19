@@ -8,6 +8,21 @@
   Auteur : Gregory. Toute instance qui reprend ce projet doit comprendre les enjeux
   ci-dessous SANS qu'on ait à les réexpliquer.
 
+  ── v49 : SECOND LAYER EN PROFONDEUR (bridé, affichage + navigation only) ──────
+  Idée : sous chaque face du cube, un PLAN JUMEAU en profondeur (axe Z). DEUX
+  grammaires gestuelles orthogonales : rotation cube = changer de FACE ; swipe
+  vertical 2 DOIGTS = changer de LAYER actif (avant ⇄ arrière). Objectif lisibilité :
+  un seul plan net à la fois ; le layer non-actif recule et s'assombrit (layerDimFor).
+  AUCUNE mécanique de croisement encore (kaizen : on valide la grammaire d'abord).
+  • FLAG_LAYER2 (bridage) : false = comportement v48 strict. NLAYERS = 2 si on.
+  • boards reste PLAT : index = boardKey(layer,face) = layer*NBOARDS+face.
+  • Toute la logique de jeu opère sur le LAYER ACTIF via curBoard()/currentLayer.
+  • Portes partagées AUSSI en profondeur : switchLayer() rejoue syncPortes.
+  • Profondeur visuelle : cubeGroup.position.z = -RADIUS + layerFade*LAYER_GAP
+    (layerFade lissé vers currentLayer dans animate → glissement doux).
+  • Undo : snapshot/restore sauvegardent currentLayer + layer par pièce.
+  À FAIRE ensuite (sous bridage) : régime de croisement (alignement passif d'abord).
+
   ── LE CONCEPT EN UNE PHRASE ──────────────────────────────────────────────────
   Une PILE de plans (tableaux) superposés en profondeur. Chaque plan est un
   micro-puzzle fermé. On résout le plan de tête ; à la complétion, le RÉSULTAT
@@ -305,7 +320,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v40 · Zoom du glissement adaptatif (suit l'étendue 3→4→5 colonnes)</title>
+<title>ADAM Stack — v49 · Second layer en profondeur (swipe vertical 2 doigts)</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -379,6 +394,16 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const COLS=5, ROWS=8, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
+// ─── v49 : SECOND LAYER (bridage) ────────────────────────────────────────────
+//  Un plan jumeau en PROFONDEUR derrière chaque face du cube. La rotation cube
+//  change la FACE ; le swipe vertical 2 doigts change le LAYER actif. Deux
+//  grammaires orthogonales. Affichage + navigation seulement (aucune mécanique
+//  de croisement encore). boards reste PLAT : index = boardKey(layer,face).
+const FLAG_LAYER2=true;                 // bridage : false = comportement v48 strict
+const NLAYERS = FLAG_LAYER2 ? 2 : 1;    // nombre de couches en profondeur
+const LAYER_GAP = 3.2;                  // recul en Z (world) du layer arrière
+let currentLayer=0;                     // 0 = avant, 1 = arrière
+function boardKey(layer,face){ return layer*NBOARDS + face; }
 // ── BRIDAGE V44 (interrupteurs, rien supprimé) ──
 //   TAP_ROTATION false : le tap ne fait plus tourner le domino
 //   PORTE_REFILL false : plus de retour/comblage ni d'aimant dans la barre des portes
@@ -715,22 +740,28 @@ cubeGroup.position.set(0,0,-RADIUS);
 // centrée mais bascule autour de col3/4. Le pivot domino/slide/fusion est inchangé (repère grille).
 const PIVOT_COL=3.5;                                  // entre col index 3 et 4
 const PIVOT_X=(PIVOT_COL-(COLS-1)/2)*CELL_W;          // = (3.5-2)*1 = 1.5 en repère grille
-const faceGroups=[];                                  // repère grille plat (dominos / grille y vivent)
+const faceGroups=[];                                  // repère grille plat — indexé boardKey(layer,face)
 const faceMounts=[];                                  // pivots tangents au cylindre (azimut)
-for(let f=0;f<NBOARDS;f++){
-  const mount=new THREE.Group();
-  const ang=f*(2*Math.PI/NBOARDS);                    // azimut de la face autour de Y
-  mount.position.set(Math.sin(ang)*RADIUS, 0, Math.cos(ang)*RADIUS);
-  mount.rotation.y=ang;                               // la face regarde vers l'extérieur
-  cubeGroup.add(mount);
-  const fg=new THREE.Group();                         // contenu : décalé pour caler l'axe sur col3/4
-  fg.position.x = -PIVOT_X;
-  fg.userData.face=f;
-  mount.add(fg);
-  faceGroups.push(fg); faceMounts.push(mount);
+// v49 : on génère NLAYERS couches. Le layer arrière recule vers l'axe du cube
+// (RADIUS - layer*LAYER_GAP) → il apparaît DERRIÈRE la face avant, même azimut.
+for(let layer=0;layer<NLAYERS;layer++){
+  const rad=Math.max(0.001, RADIUS - layer*LAYER_GAP);
+  for(let f=0;f<NBOARDS;f++){
+    const mount=new THREE.Group();
+    const ang=f*(2*Math.PI/NBOARDS);                  // azimut de la face autour de Y
+    mount.position.set(Math.sin(ang)*rad, 0, Math.cos(ang)*rad);
+    mount.rotation.y=ang;                             // la face regarde vers l'extérieur
+    cubeGroup.add(mount);
+    const fg=new THREE.Group();                       // contenu : décalé pour caler l'axe sur col3/4
+    fg.position.x = -PIVOT_X;
+    fg.userData.face=f; fg.userData.layer=layer;
+    mount.add(fg);
+    faceGroups[boardKey(layer,f)]=fg; faceMounts[boardKey(layer,f)]=mount;
+  }
 }
 // Attache/détache un mesh de domino sur le groupe de SA face (repère local plat).
-function addDomino(mesh,f){ faceGroups[f].add(mesh); }
+// v49 : addDomino reçoit la clé plate (boardKey). buildBoards/syncPortes la fournissent.
+function addDomino(mesh,key){ faceGroups[key].add(mesh); }
 function removeDomino(mesh){ if(mesh&&mesh.parent) mesh.parent.remove(mesh); }
 
 function makeGridTex(){ const S=512, cv=document.createElement('canvas'); cv.width=Math.round(S*COLS/ROWS); cv.height=S;
@@ -738,9 +769,12 @@ function makeGridTex(){ const S=512, cv=document.createElement('canvas'); cv.wid
   return new THREE.CanvasTexture(cv);
 }
 const gridTex=makeGridTex(); const gridMeshes=[];
-for(let f=0;f<NBOARDS;f++){ const plane=new THREE.Mesh(new THREE.PlaneGeometry(FACE_W,FACE_H),
-  new THREE.MeshBasicMaterial({map:gridTex,transparent:true,side:THREE.FrontSide,depthWrite:false}));
-  plane.renderOrder=-2; plane.userData.face=f; faceGroups[f].add(plane); gridMeshes.push(plane); }
+for(let layer=0;layer<NLAYERS;layer++){
+  for(let f=0;f<NBOARDS;f++){ const plane=new THREE.Mesh(new THREE.PlaneGeometry(FACE_W,FACE_H),
+    new THREE.MeshBasicMaterial({map:gridTex,transparent:true,side:THREE.FrontSide,depthWrite:false}));
+    plane.renderOrder=-2; plane.userData.face=f; plane.userData.layer=layer;
+    faceGroups[boardKey(layer,f)].add(plane); gridMeshes[boardKey(layer,f)]=plane; }
+}
 
 function cellToLocal(col,row){ return { x:(col-(COLS-1)/2)*CELL_W, y:((ROWS-1)/2-row)*CELL_W }; }
 function getPos(i){ return {col:i%COLS,row:Math.floor(i/COLS)}; }
@@ -795,11 +829,21 @@ function createDominoMesh(face1,face2,state,regress,rotation){ const grp=new THR
 let boards=[], currentBoard=0, moves=0;
 let lockedPiece=null;   // domino en transfert (flotte en scene-space pendant la navigation)
 function buildBoards(){
-  boards.forEach(b=>b.forEach(p=>{ if(p&&p.mesh)removeDomino(p.mesh); }));
-  boards=DEMOS.map(()=>new Array(TOTAL).fill(null));
-  DEMOS.forEach((demo,f)=>{ demo.forEach(([idx,state,face1,face2,rotation,regress,target])=>{
-    const mesh=createDominoMesh(face1,face2,state,regress,rotation||0); mesh.visible=false; addDomino(mesh,f);
-    boards[f][idx]={state,state1:state,state2:state,face1,face2,rotation:rotation||0,regress:!!regress,target:!!target,mesh,face:f}; }); });
+  boards.forEach(b=>b&&b.forEach(p=>{ if(p&&p.mesh)removeDomino(p.mesh); }));
+  // v49 : NLAYERS*NBOARDS plateaux plats. Layer 0 = niveaux de jeu (DEMOS).
+  // Layer 1 = plan arrière ; seedé avec les mêmes niveaux décalés d'une face
+  //  → quelque chose à VOIR en swipant, sans mécanique de croisement.
+  boards=new Array(NLAYERS*NBOARDS).fill(null).map(()=>new Array(TOTAL).fill(null));
+  for(let layer=0;layer<NLAYERS;layer++){
+    DEMOS.forEach((demo,f)=>{
+      const srcDemo = layer===0 ? demo : DEMOS[(f+1)%NBOARDS];   // arrière : niveau voisin, juste pour peupler
+      const key=boardKey(layer,f);
+      srcDemo.forEach(([idx,state,face1,face2,rotation,regress,target])=>{
+        const mesh=createDominoMesh(face1,face2,state,regress,rotation||0); mesh.visible=false; addDomino(mesh,key);
+        boards[key][idx]={state,state1:state,state2:state,face1,face2,rotation:rotation||0,regress:!!regress,target:!!target,mesh,face:f,layer,key};
+      });
+    });
+  }
   // v46 : aucune porte au démarrage — les positions 21/22/23 sont des dominos libres normaux.
 }
 
@@ -811,23 +855,24 @@ function buildBoards(){
 // elle est vidée partout. Comportement de jeu normal ; seule cette propagation est spéciale.
 function syncPortes(srcBoard){
   srcBoard=mod(srcBoard==null?currentBoard:srcBoard);
-  // v46 : une porte dont la case est vide sur TOUS les plateaux (fusionnée / vidée) n'est
-  // plus une porte — on libère son slot pour que le joueur puisse en choisir une autre.
-  PORTE_POSITIONS=PORTE_POSITIONS.filter(idx=>boards.some(b=>b[idx]));
+  const L=currentLayer;
+  // v46 : une porte vide sur TOUS les plateaux du layer actif n'est plus une porte.
+  PORTE_POSITIONS=PORTE_POSITIONS.filter(idx=>{ for(let f=0;f<NBOARDS;f++){ if(boards[boardKey(L,f)][idx]) return true; } return false; });
   for(const idx of PORTE_POSITIONS){
-    const src=boards[srcBoard][idx];
+    const src=boards[boardKey(L,srcBoard)][idx];
     for(let f=0;f<NBOARDS;f++){
       if(f===srcBoard) continue;
-      const cur=boards[f][idx];
-      if(!src){ if(cur){ if(cur.mesh)removeDomino(cur.mesh); boards[f][idx]=null; } continue; }
+      const key=boardKey(L,f);
+      const cur=boards[key][idx];
+      if(!src){ if(cur){ if(cur.mesh)removeDomino(cur.mesh); boards[key][idx]=null; } continue; }
       // (re)crée un mesh propre à cette face avec les valeurs de la source
       if(cur&&cur.mesh) removeDomino(cur.mesh);
       const mesh=createDominoMesh(src.face1,src.face2,src.state,src.regress,src.rotation||0);
       if(mesh.userData.porteEdge) mesh.userData.porteEdge.visible=true;
-      mesh.visible=false; addDomino(mesh,f);
-      boards[f][idx]={ state:src.state,state1:src.state1,state2:src.state2,
+      mesh.visible=false; addDomino(mesh,key);
+      boards[key][idx]={ state:src.state,state1:src.state1,state2:src.state2,
         face1:src.face1,face2:src.face2,rotation:src.rotation||0,
-        regress:!!src.regress,target:!!src.target,mesh,face:f };
+        regress:!!src.regress,target:!!src.target,mesh,face:f,layer:L,key };
     }
   }
 }
@@ -840,7 +885,7 @@ function commutePorte(i){
   if(i<0) return;
   if(PORTE_POSITIONS.includes(i)){            // porte existante → on la retire
     PORTE_POSITIONS=PORTE_POSITIONS.filter(x=>x!==i);
-    for(let f=0;f<NBOARDS;f++){ const p=boards[f][i]; if(p) placePiece(p); }  // réaligne le liseré (isPorteIdx désormais faux)
+    for(let f=0;f<NBOARDS;f++){ const p=boards[boardKey(currentLayer,f)][i]; if(p) placePiece(p); }  // réaligne le liseré (isPorteIdx désormais faux)
     if(navigator.vibrate) navigator.vibrate(12);
     return;
   }
@@ -869,7 +914,7 @@ function clearPorteProxies(){ porteProxies.forEach(m=>{ if(m.parent)m.parent.rem
 function showPorteProxies(){
   clearPorteProxies();
   for(const idx of PORTE_POSITIONS){
-    const p=boards[currentBoard][idx]; if(!p)continue;
+    const p=boards[boardKey(currentLayer,currentBoard)][idx]; if(!p)continue;
     if(p.mesh) p.mesh.visible=false;                       // masque le vrai (il va tourner avec la face)
     const {col,row}=getPos(idx); const {x,y}=cellToLocal(col,row);
     const proxy=createDominoMesh(p.face1,p.face2,p.state,p.regress,p.rotation||0);
@@ -883,7 +928,7 @@ function showPorteProxies(){
 }
 function hidePorteProxies(){
   clearPorteProxies();
-  for(const idx of PORTE_POSITIONS){ const p=boards[currentBoard][idx]; if(p&&p.mesh)p.mesh.visible=true; }
+  for(const idx of PORTE_POSITIONS){ const p=boards[boardKey(currentLayer,currentBoard)][idx]; if(p&&p.mesh)p.mesh.visible=true; }
 }
 
 // ─── HALO DE PORTE : faisceaux cosmic reliant les plateaux (visibles pendant la rotation) ───
@@ -905,10 +950,10 @@ const porteBeams=[];
 let history=[];
 function snapshotState(){
   return {
-    currentBoard,
+    currentBoard, currentLayer,
     boards: boards.map(arr=>arr.map(p=>p? {
       state:p.state, state1:p.state1, state2:p.state2,
-      face1:p.face1, face2:p.face2, rotation:p.rotation||0, regress:!!p.regress, target:!!p.target, face:p.face
+      face1:p.face1, face2:p.face2, rotation:p.rotation||0, regress:!!p.regress, target:!!p.target, face:p.face, layer:p.layer
     } : null))
   };
 }
@@ -919,10 +964,11 @@ function restoreState(snap){
   if(lockedPiece&&lockedPiece.mesh){ if(lockedPiece.mesh.parent)lockedPiece.mesh.parent.remove(lockedPiece.mesh); lockedPiece=null; lockFloatBase=null; }
   boards.forEach(arr=>arr.forEach(p=>{ if(p&&p.mesh)removeDomino(p.mesh); }));
   currentBoard=snap.currentBoard;
+  currentLayer=snap.currentLayer||0;
   boards=snap.boards.map((arr,f)=>arr.map(d=>{
     if(!d)return null;
     const mesh=createDominoMesh(d.face1,d.face2,d.state,d.regress,d.rotation||0); mesh.visible=false; addDomino(mesh,f);
-    return {state:d.state,state1:d.state1,state2:d.state2,face1:d.face1,face2:d.face2,rotation:d.rotation||0,regress:!!d.regress,target:!!d.target,mesh,face:f};
+    return {state:d.state,state1:d.state1,state2:d.state2,face1:d.face1,face2:d.face2,rotation:d.rotation||0,regress:!!d.regress,target:!!d.target,mesh,face:(d.face!=null?d.face:f%NBOARDS),layer:(d.layer!=null?d.layer:Math.floor(f/NBOARDS)),key:f};
   }));
   assignFaces(); updateUI(); updateUndoBtn();
 }
@@ -939,7 +985,7 @@ function getTipDir(p){ const rot=(((p.rotation||0)%360)+360)%360;
   if(rot===0)return{dc:0,dr:-1}; if(rot===90)return{dc:1,dr:0}; if(rot===180)return{dc:0,dr:1}; if(rot===270)return{dc:-1,dr:0}; return{dc:0,dr:-1}; }
 
 function placePiece(p){ if(!p||!p.mesh)return;
-  const i=boards[p.face].indexOf(p); const {col,row}=getPos(i); const {x,y}=cellToLocal(col,row);
+  const i=boards[p.key!=null?p.key:p.face].indexOf(p); const {col,row}=getPos(i); const {x,y}=cellToLocal(col,row);
   // La ROTATION vit dans la TEXTURE (façon prisme) : le mesh garde une orientation neutre.
   // baseQuat = identité (le balancement décoratif s'appuie dessus). On régénère la texture
   // pour que l'icône reflète p.rotation.
@@ -954,10 +1000,36 @@ function mod(n){ return ((n%NBOARDS)+NBOARDS)%NBOARDS; }
 // pour ramener la face f devant). Les dominos sont posés dans le repère local de leur face.
 function cubeAngleFor(boardIdx){ return -boardIdx*(2*Math.PI/NBOARDS); }
 function assignFaces(){
-  gridMeshes.forEach(g=>{ g.position.set(0,0,0); g.quaternion.identity(); g.visible=true; });
-  boards.forEach((arr)=>{ arr.forEach(p=>{ if(!p)return; placePiece(p); p.mesh.visible=true; }); });
+  gridMeshes.forEach(g=>{ if(!g)return; g.position.set(0,0,0); g.quaternion.identity(); g.visible=true; });
+  boards.forEach((arr)=>{ if(!arr)return; arr.forEach(p=>{ if(!p)return; placePiece(p); p.mesh.visible=true; }); });
+  // v49 : applique l'atténuation de profondeur (layer arrière assombri/transparent).
+  applyLayerDepth();
   // oriente le cube sur la face courante (sans animation : pose directe)
   cubeGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0,1,0), cubeAngleFor(currentBoard));
+}
+// v49 : atténuation visuelle par couche. Le layer ACTIF reste net ; le layer
+// non-actif recule visuellement (opacité réduite) → un seul plan lisible à la fois,
+// la profondeur reste lisible en portrait sans surcharge. Animation douce via layerFade.
+let layerFade=0;   // 0 = avant net, 1 = arrière net (interpolé dans animate)
+function layerDimFor(layer){
+  // proximité de ce layer au layer "visuellement actif" (layerFade ∈ [0..1])
+  const prox = 1 - Math.abs(layer - layerFade);   // 1 si actif, ↓ sinon
+  return Math.max(0.12, prox);                     // jamais totalement invisible
+}
+function applyLayerDepth(){
+  if(NLAYERS<2) return;
+  for(let layer=0;layer<NLAYERS;layer++){
+    const dim=layerDimFor(layer);
+    for(let f=0;f<NBOARDS;f++){
+      const arr=boards[boardKey(layer,f)]; if(!arr)continue;
+      arr.forEach(p=>{ if(!p||!p.mesh)return;
+        const ud=p.mesh.userData;
+        if(ud&&ud.faceMesh) ud.faceMesh.material.opacity=dim;
+        if(ud&&ud.edgeLines) ud.edgeLines.material.opacity=0.5*dim;
+      });
+      const g=gridMeshes[boardKey(layer,f)]; if(g) g.material.opacity=0.5*dim;
+    }
+  }
 }
 // ════════════════════════════════════════════════════════════
 //  MOTEUR DE JEU — portage fidèle de la mécanique ADAM V4 :
@@ -971,14 +1043,14 @@ const ROT_DUR=0.55;
 let swapAnim=null;            // réutilisé pour animer le snap du glissement
 let rotAnim=null;             // animation de pivot du domino au tap (slerp doux, feel du layer)
 
-function curBoard(){ return boards[currentBoard]; }
+function curBoard(){ return boards[boardKey(currentLayer,currentBoard)]; }
 
 // v37 : PLATEAU CADUC. Un plateau est "vivant" tant qu'il porte au moins UNE pièce LIBRE
 // (ni porte, ni cible). Les portes étant toujours pleines (refillPortes), elles ne comptent
 // pas : sinon aucun plateau ne serait jamais caduc. Quand un plateau perd sa dernière pièce
 // libre (par fusion/twin/migration), il devient caduc → son dot disparaît, le compteur du
 // haut diminue. Cela donne un sens aux échanges : on vide les plateaux un à un.
-function boardIsLive(f){ const b=boards[f]; if(!b)return false;
+function boardIsLive(f){ const b=boards[boardKey(currentLayer,f)]; if(!b)return false;
   for(let i=0;i<TOTAL;i++){ const p=b[i]; if(p&&!isPorteIdx(i)&&!p.target) return true; }
   return false; }
 function liveBoardCount(){ let n=0; for(let f=0;f<NBOARDS;f++) if(boardIsLive(f))n++; return n; }
@@ -1250,7 +1322,7 @@ let pressTimer=null, lockFloatBase=null;
 function cellAt(cx,cy){
   const r=canvas.getBoundingClientRect();
   mouseV.x=((cx-r.left)/r.width)*2-1; mouseV.y=-((cy-r.top)/r.height)*2+1; raycaster.setFromCamera(mouseV,camera);
-  const g=gridMeshes[currentBoard]; if(!g) return null;
+  const g=gridMeshes[boardKey(currentLayer,currentBoard)]; if(!g) return null;
   const hit=raycaster.intersectObject(g,false); if(!hit.length) return null;
   const lp=g.worldToLocal(hit[0].point.clone());
   const col=Math.round(lp.x/CELL_W+(COLS-1)/2);
@@ -1291,9 +1363,10 @@ function dropPiece(cx,cy){
     idx=best;
   }
   // ré-attache au plateau courant et pose
+  const dkey=boardKey(currentLayer,currentBoard);
   cubeGroup.attach(p.mesh);
-  if(p.mesh.parent!==faceGroups[currentBoard]) faceGroups[currentBoard].attach(p.mesh);
-  p.mesh.scale.set(1,1,1); p.locked=false; p.face=currentBoard;
+  if(p.mesh.parent!==faceGroups[dkey]) faceGroups[dkey].attach(p.mesh);
+  p.mesh.scale.set(1,1,1); p.locked=false; p.face=currentBoard; p.layer=currentLayer; p.key=dkey;
   head[idx]=p; lockedPiece=null; lockFloatBase=null;
   placePiece(p); assignFaces(); updateUI();
   showToast('Déposé sur plateau '+(currentBoard+1));
@@ -1302,6 +1375,34 @@ function dropPiece(cx,cy){
 
 let downX=0,downY=0,downT=0,moved=false;
 let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
+// ─── v49 : BASCULE DE LAYER (swipe vertical 2 doigts) ────────────────────────
+//  Geste à 2 doigts, dominante verticale → change le layer actif. Canal tactile
+//  séparé (touch*) : n'interfère pas avec le pointer 1-doigt qui pilote le jeu.
+function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
+  if(NLAYERS<2) return;
+  if(busy||isAnimating||swapAnim||rotAnim||migrating||lockedPiece) return;
+  const tgt=Math.min(NLAYERS-1, Math.max(0, currentLayer+dir));
+  if(tgt===currentLayer) return;
+  currentLayer=tgt;
+  syncPortes(currentBoard);            // portes partagées aussi en profondeur
+  assignFaces(); refreshZoom(); updateUI();
+  if(navigator.vibrate) navigator.vibrate(14);
+  showToast(currentLayer===0?'Plan avant':'Plan arrière');
+}
+let twoT0=null, twoY0=0, twoFired=false;
+canvas.addEventListener('touchstart',e=>{
+  if(e.touches.length===2){ twoT0=Date.now(); twoY0=(e.touches[0].clientY+e.touches[1].clientY)/2; twoFired=false; }
+},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if(e.touches.length!==2||twoT0==null||twoFired) return;
+  const y=(e.touches[0].clientY+e.touches[1].clientY)/2;
+  const dxs=Math.abs(e.touches[0].clientX-e.touches[1].clientX);
+  const dys=Math.abs(e.touches[0].clientY-e.touches[1].clientY);
+  const dy=y-twoY0;
+  // dominante verticale (les 2 doigts côte à côte) + amplitude suffisante
+  if(Math.abs(dy)>48 && dxs>dys){ switchLayer(dy<0?1:-1); twoFired=true; }   // glisse vers le HAUT → plan arrière
+},{passive:true});
+canvas.addEventListener('touchend',e=>{ if(e.touches.length<2){ twoT0=null; } },{passive:true});
 canvas.addEventListener('pointerdown',e=>{
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=e.clientX; downY=e.clientY; downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
@@ -1996,15 +2097,16 @@ function migrateDown(result){
   // l'état du résultat est RÉTROGRADÉ en traversant (coût de la migration, variable par plan)
   const landedState=demoteState(result.state, demoteFor(nextBoard));
   // poser une copie du résultat (rétrogradé) sur la case d'accueil imposée du plan suivant (si libre)
-  if(!boards[nextBoard][LANDING_IDX]){
-    const mesh=createDominoMesh(result.face1,result.face2,landedState,false,0); mesh.visible=false; addDomino(mesh,nextBoard);
-    boards[nextBoard][LANDING_IDX]={
+  if(!boards[boardKey(currentLayer,nextBoard)][LANDING_IDX]){
+    const nkey=boardKey(currentLayer,nextBoard);
+    const mesh=createDominoMesh(result.face1,result.face2,landedState,false,0); mesh.visible=false; addDomino(mesh,nkey);
+    boards[nkey][LANDING_IDX]={
       state:landedState, state1:landedState, state2:landedState,
-      face1:result.face1, face2:result.face2, rotation:0, mesh, face:nextBoard
+      face1:result.face1, face2:result.face2, rotation:0, mesh, face:nextBoard, layer:currentLayer, key:nkey
     };
   }
   // retirer le résultat du plan de tête (il a "traversé")
-  const head=boards[currentBoard];
+  const head=boards[boardKey(currentLayer,currentBoard)];
   const hi=head.indexOf(result); if(hi>=0){ if(result.mesh)removeDomino(result.mesh); head[hi]=null; }
   assignFaces();
   const demoted = landedState!==result.state;
@@ -2063,7 +2165,7 @@ let targetCamZ=CAM_Z, targetCamY=0, targetCamX=-PIVOT_X;
 // bonne échelle pendant la rotation : un seul geste continu, plus de "deux temps".
 function refreshZoom(boardIdx){
   const bi = (boardIdx==null) ? currentBoard : mod(boardIdx);
-  const d=boards[bi]; if(!d){ targetCamZ=baseFitZ; targetCamY=baseFitY; targetCamX=-PIVOT_X; return; }
+  const d=boards[boardKey(currentLayer,bi)]; if(!d){ targetCamZ=baseFitZ; targetCamY=baseFitY; targetCamX=-PIVOT_X; return; }
   let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,n=0;
   for(let i=0;i<TOTAL;i++){ const p=d[i]; if(!p)continue; const {col,row}=getPos(i); const {x,y}=cellToLocal(col,row);
     minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++; }
@@ -2099,12 +2201,14 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   tickRot(dt);
   // faces à rendre : la courante, et pendant la rotation aussi la cible (les autres masquées)
   const targetBoard = isAnimating ? navTarget : currentBoard;
-  boards.forEach((arr,f)=>arr.forEach((p,si)=>{ if(!p||!p.mesh)return; const ud=p.mesh.userData;
+  boards.forEach((arr,key)=>arr.forEach((p,si)=>{ if(!p||!p.mesh)return; const ud=p.mesh.userData;
+    const pl=Math.floor(key/NBOARDS), f=key%NBOARDS;          // v49 : layer + face réels
     let shown = (f===currentBoard)||(isAnimating&&f===targetBoard);
     // pendant la rotation, les cases-portes sont rendues par leurs PROXIES fixes : on masque le vrai
     if(isAnimating&&isPorteIdx(si)) shown=false;
     p.mesh.visible = shown;
     if(!shown) return;
+    const ldim = (NLAYERS<2) ? 1 : layerDimFor(pl);          // atténuation de profondeur de CE layer
     if(!swapAnim){ p.mesh.position.z = SAT_LIFT; }
     // balancement décoratif (suspendu pendant rotation cube / fusion / autres anims bloquantes ; ET sur la cible : immobile).
     if(p.mesh.visible&&!isAnimating&&!swapAnim&&!busy&&!(rotAnim&&rotAnim.mesh===p.mesh)&&p.baseQuat&&!p.target){ const ph=tScaled*1.2+si*1.7;
@@ -2112,7 +2216,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
       const bq=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.cos(ph*0.7)*0.008*amp)); p.mesh.quaternion.copy(p.baseQuat).multiply(bq); }
     const st=p.state||'white';
     // v29 : halos clignotants supprimés (lisibilité) ; liserés uniformisés (couleur par état, opacité fixe).
-    const EDGE_OP = 0.5;
+    const EDGE_OP = 0.5*ldim;
     ud.haloSprite.material.opacity = 0;
     ud.glowMesh.material.opacity = 0;
     if(st==='cosmic'){
@@ -2134,12 +2238,13 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
       ud.ringMesh.material.opacity=0;
       ud.edgeLines.material.color.set(0xd2d2dc);ud.edgeLines.material.opacity=EDGE_OP;
     }
-    ud.faceMesh.material.opacity = 1;
+    ud.faceMesh.material.opacity = 1*ldim;
   }));
   // grilles : visibles seulement pour la face courante (+ cible pendant la rotation)
-  gridMeshes.forEach(g=>{ const f=g.userData.face;
+  gridMeshes.forEach(g=>{ if(!g)return; const f=g.userData.face, pl=g.userData.layer||0;
     g.visible = (f===currentBoard)||(isAnimating&&f===targetBoard);
-    g.position.set(0,0,0); g.material.opacity=0.5; });
+    g.position.set(0,0,0);
+    g.material.opacity = 0.5 * ((NLAYERS<2)?1:layerDimFor(pl)); });
   // PIÈCE FLOTTANTE (transfert) : reste fixe devant la caméra, en sus du cube qui tourne.
   if(lockedPiece&&lockedPiece.mesh){
     const m=lockedPiece.mesh; m.visible=true;
@@ -2186,6 +2291,14 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   camera.position.z += (zGoal-camera.position.z)*0.12*TS;
   camera.position.y += (targetCamY-camera.position.y)*0.08*TS;
   camera.position.x += (xGoal-camera.position.x)*0.12*TS;
+  // v49 : lissage de la transition de profondeur entre layers (swipe vertical 2 doigts).
+  if(NLAYERS>1){
+    const lf=layerFade; layerFade += (currentLayer-layerFade)*0.14*TS;
+    if(Math.abs(layerFade-lf)>0.0005) applyLayerDepth();   // ré-applique le dim pendant le glissement
+    // décale tout le cube en Z pour amener le LAYER ACTIF au plan de référence (Z d'origine).
+    // layerFade=0 → cube à -RADIUS (avant net) ; layerFade=1 → cube avancé de LAYER_GAP (arrière net).
+    cubeGroup.position.z = -RADIUS + layerFade*LAYER_GAP;
+  }
   camera.lookAt(camera.position.x, camera.position.y, 0);
   renderer.render(scene,camera);
 }
