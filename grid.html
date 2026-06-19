@@ -799,6 +799,9 @@ function buildBoards(){
 // elle est vidée partout. Comportement de jeu normal ; seule cette propagation est spéciale.
 function syncPortes(srcBoard){
   srcBoard=mod(srcBoard==null?currentBoard:srcBoard);
+  // v46 : une porte dont la case est vide sur TOUS les plateaux (fusionnée / vidée) n'est
+  // plus une porte — on libère son slot pour que le joueur puisse en choisir une autre.
+  PORTE_POSITIONS=PORTE_POSITIONS.filter(idx=>boards.some(b=>b[idx]));
   for(const idx of PORTE_POSITIONS){
     const src=boards[srcBoard][idx];
     for(let f=0;f<NBOARDS;f++){
