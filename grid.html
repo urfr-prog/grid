@@ -328,7 +328,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v51 · Zoom commun aux 2 layers + actif toujours au-dessus à la bascule</title>
+<title>ADAM Stack — v53 · Trio 21/22/23 retiré du layer 0 (chaque face enfin distincte)</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -672,9 +672,6 @@ const LEVEL_1=[
   [15,'gold','chevron','line',0],    // CIBLE gold (col0,row3) : face1=chevron → MATCH vertical
   [9,'silver','chevron','circle',0],
   [34,'gold','wave','line',0],
-  [21,'white','circle','wave',0],   // PORTE
-  [22,'white','wave','circle',0],   // PORTE
-  [23,'white','line','chevron',0],  // PORTE
 ];
 // ── PLATEAU 2 — largeur 4 ──
 const LEVEL_2=[
@@ -682,9 +679,6 @@ const LEVEL_2=[
   [20,'silver','circle','wave',0],   // CIBLE silver (col0,row4) : face1=circle → MATCH
   [13,'silver','circle','wave',0],
   [35,'white','line','circle',0],
-  [21,'white','chevron','wave',0],  // PORTE
-  [22,'white','wave','circle',0],   // PORTE
-  [23,'white','line','chevron',0],  // PORTE
 ];
 // ── PLATEAU 3 — largeur 3, deux régresseurs ──
 const LEVEL_3=[
@@ -693,9 +687,6 @@ const LEVEL_3=[
   [19,'gold','chevron','wave',0],    // CIBLE gold (col4,row3) : face1=chevron → MATCH
   [10,'white','line','wave',0,1],    // RÉGRESSEUR (col0,row2) : face2=wave
   [20,'silver','wave','line',0],     // CIBLE silver (col0,row4) : face1=wave → MATCH
-  [21,'white','chevron','wave',0],  // PORTE
-  [22,'white','wave','circle',0],   // PORTE
-  [23,'white','line','chevron',0],  // PORTE
 ];
 // ── PLATEAU 4 — largeur 3 ──
 const LEVEL_4=[
@@ -703,12 +694,45 @@ const LEVEL_4=[
   [16,'gold','wave','circle',0],     // CIBLE gold (col1,row3) : face1=wave → MATCH
   [12,'white','chevron','line',0],
   [5,'silver','circle','line',0],
-  [21,'white','chevron','wave',0],  // PORTE
-  [22,'white','wave','circle',0],   // PORTE
-  [23,'white','line','chevron',0],  // PORTE
 ];
 
 const DEMOS=[ LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4 ];
+
+// ════════════════════════════════════════════════════════════════════════════
+// v52 : NIVEAUX DU LAYER 1 (plan arrière) — motifs PROPRES et DISTINCTS du layer 0.
+//   Objectif : lever tout doute visuel. Aucun trio bas (21/22/23), pas de pyramide,
+//   pas d'éparpillement. Motifs posés/centrés, emprises différenciées (zoom commun
+//   lisible). Zéro-match au démarrage : rot 0 partout (aucun contact horizontal) ;
+//   contacts verticaux non concordants, sauf paires régresseur↔cible voulues
+//   (séparées d'une case vide → un slide les met au contact). Format identique :
+//   [idx, state, face1(haut), face2(bas), rotation, regress?, target?]. Grille 5×8.
+// ── BACK 1 — colonne centrale + ailes (largeur 3, col 1·2·3) ──
+const BACK_1=[
+  [7,'silver','line','wave',0],      // (col2,row1) tête colonne centrale
+  [17,'gold','circle','chevron',0],  // (col2,row3) — face1=circle ≠ wave : pas de match
+  [11,'white','wave','line',0],      // (col1,row2) aile gauche
+  [13,'white','chevron','circle',0], // (col3,row2) aile droite
+];
+// ── BACK 2 — double colonne symétrique emerald (col 1 & 3, largeur 3) ──
+const BACK_2=[
+  [6,'emerald','chevron','line',0],  // (col1,row1)
+  [16,'silver','wave','circle',0],   // (col1,row3) — face1=wave ≠ line
+  [8,'emerald','line','chevron',0],  // (col3,row1)
+  [18,'silver','circle','wave',0],   // (col3,row3) — face1=circle ≠ chevron
+];
+// ── BACK 3 — barre médiane alignée de 3 dominos (row3, largeur 5) ──
+const BACK_3=[
+  [15,'gold','wave','line',0],       // (col0,row3)
+  [17,'silver','chevron','circle',0],// (col2,row3)
+  [19,'gold','line','wave',0],       // (col4,row3)
+];
+// ── BACK 4 — paire régresseur↔cible (col1) + satellite cosmic (col3, largeur 3) ──
+const BACK_4=[
+  [6,'white','line','chevron',0,1],  // RÉGRESSEUR (col1,row1) : face2=chevron
+  [16,'gold','chevron','wave',0],    // CIBLE gold (col1,row3) : face1=chevron → MATCH vertical
+  [13,'cosmic','wave','circle',0],   // (col3,row2) satellite
+];
+const DEMOS_BACK=[ BACK_1, BACK_2, BACK_3, BACK_4 ];
 
 // ─── Objectifs : bac à sable de démonstration sur chaque plateau ───
 const TARGET_BY_BOARD=[0,0,0,0];
@@ -845,7 +869,7 @@ function buildBoards(){
   boards=new Array(NLAYERS*NBOARDS).fill(null).map(()=>new Array(TOTAL).fill(null));
   for(let layer=0;layer<NLAYERS;layer++){
     DEMOS.forEach((demo,f)=>{
-      const srcDemo = layer===0 ? demo : DEMOS[(f+1)%NBOARDS];   // arrière : niveau voisin, juste pour peupler
+      const srcDemo = layer===0 ? demo : DEMOS_BACK[f];   // v52 : layer 1 = niveaux PROPRES distincts (DEMOS_BACK)
       const key=boardKey(layer,f);
       srcDemo.forEach(([idx,state,face1,face2,rotation,regress,target])=>{
         const mesh=createDominoMesh(face1,face2,state,regress,rotation||0); mesh.visible=false; addDomino(mesh,key);
