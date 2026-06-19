@@ -328,7 +328,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v54 · Retrait de porte : nettoyage des copies sur les faces non-courantes</title>
+<title>ADAM Stack — v55 · Portes : création si slots libres + partage inter-layers (8 plateaux)</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -889,24 +889,25 @@ function buildBoards(){
 function syncPortes(srcBoard){
   srcBoard=mod(srcBoard==null?currentBoard:srcBoard);
   const L=currentLayer;
-  // v46 : une porte vide sur TOUS les plateaux du layer actif n'est plus une porte.
-  PORTE_POSITIONS=PORTE_POSITIONS.filter(idx=>{ for(let f=0;f<NBOARDS;f++){ if(boards[boardKey(L,f)][idx]) return true; } return false; });
+  // v55 : une porte est partagée sur les 8 plateaux (NLAYERS × NBOARDS). Elle cesse
+  // d'être une porte seulement si elle est vide sur TOUS les plateaux de TOUS les layers.
+  PORTE_POSITIONS=PORTE_POSITIONS.filter(idx=>{ for(let ly=0;ly<NLAYERS;ly++){ for(let f=0;f<NBOARDS;f++){ if(boards[boardKey(ly,f)] && boards[boardKey(ly,f)][idx]) return true; } } return false; });
   for(const idx of PORTE_POSITIONS){
     const src=boards[boardKey(L,srcBoard)][idx];
-    for(let f=0;f<NBOARDS;f++){
-      if(f===srcBoard) continue;
-      const key=boardKey(L,f);
+    for(let ly=0;ly<NLAYERS;ly++){ for(let f=0;f<NBOARDS;f++){
+      if(ly===L && f===srcBoard) continue;        // la source fait foi
+      const key=boardKey(ly,f); if(!boards[key]) continue;
       const cur=boards[key][idx];
       if(!src){ if(cur){ if(cur.mesh)removeDomino(cur.mesh); boards[key][idx]=null; } continue; }
-      // (re)crée un mesh propre à cette face avec les valeurs de la source
+      // (re)crée un mesh propre à ce plateau avec les valeurs de la source
       if(cur&&cur.mesh) removeDomino(cur.mesh);
       const mesh=createDominoMesh(src.face1,src.face2,src.state,src.regress,src.rotation||0);
       if(mesh.userData.porteEdge) mesh.userData.porteEdge.visible=true;
       mesh.visible=false; addDomino(mesh,key);
       boards[key][idx]={ state:src.state,state1:src.state1,state2:src.state2,
         face1:src.face1,face2:src.face2,rotation:src.rotation||0,
-        regress:!!src.regress,target:!!src.target,mesh,face:f,layer:L,key };
-    }
+        regress:!!src.regress,target:!!src.target,mesh,face:f,layer:ly,key };
+    } }
   }
 }
 
@@ -918,13 +919,14 @@ function commutePorte(i){
   if(i<0) return;
   if(PORTE_POSITIONS.includes(i)){            // porte existante → on la retire
     PORTE_POSITIONS=PORTE_POSITIONS.filter(x=>x!==i);
-    // v54 : la porte redevient une case LIBRE LOCALE. Les copies propagées par syncPortes
-    // sur les 3 autres faces doivent être SUPPRIMÉES (sinon un domino reste copié au retrait).
-    for(let f=0;f<NBOARDS;f++){
-      if(f===currentBoard){ const p=boards[boardKey(currentLayer,f)][i]; if(p) placePiece(p); continue; }
-      const cur=boards[boardKey(currentLayer,f)][i];
-      if(cur){ if(cur.mesh) removeDomino(cur.mesh); boards[boardKey(currentLayer,f)][i]=null; }
-    }
+    // v55 : la porte redevient une case LIBRE LOCALE. Copies propagées supprimées sur
+    // les 7 autres plateaux (toutes faces, tous layers) ; la case courante est conservée.
+    for(let ly=0;ly<NLAYERS;ly++){ for(let f=0;f<NBOARDS;f++){
+      const key=boardKey(ly,f); if(!boards[key]) continue;
+      if(ly===currentLayer && f===currentBoard){ const p=boards[key][i]; if(p) placePiece(p); continue; }
+      const cur=boards[key][i];
+      if(cur){ if(cur.mesh) removeDomino(cur.mesh); boards[key][i]=null; }
+    } }
     if(navigator.vibrate) navigator.vibrate(12);
     return;
   }
@@ -934,9 +936,16 @@ function commutePorte(i){
     if(navigator.vibrate) navigator.vibrate(18);
     return;
   }
-  PORTE_POSITIONS.push(i);                     // nouvelle porte partagée
-  placePiece(p);                               // v46 : réaligne le liseré-porte du domino COURANT (porteEdge.visible=isPorteIdx)
-  syncPortes(currentBoard);                    // propage la définition sur les 4 plateaux
+  // v55 : porte autorisée UNIQUEMENT si la case i est LIBRE sur les 7 autres plateaux
+  // (n'écrase rien). Sinon feedback (flash + vibration), aucun effet.
+  for(let ly=0;ly<NLAYERS;ly++){ for(let f=0;f<NBOARDS;f++){
+    const key=boardKey(ly,f); if(!boards[key]) continue;
+    if(ly===currentLayer && f===currentBoard) continue;
+    if(boards[key][i]){ flashFusion(p); if(navigator.vibrate) navigator.vibrate(18); return; }
+  } }
+  PORTE_POSITIONS.push(i);                     // nouvelle porte partagée (8 plateaux)
+  placePiece(p);                               // réaligne le liseré-porte du domino COURANT
+  syncPortes(currentBoard);                    // propage la définition sur les 8 plateaux
   if(navigator.vibrate) navigator.vibrate(18);
 }
 
