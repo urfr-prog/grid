@@ -625,9 +625,17 @@ function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
 //    diffère de la face de la porte → pas d'aimant vertical avec la porte.
 //  • Deux libres d'une même colonne : faces de contact vertical distinctes.
 // Portes — top: c1=chevron c2=wave c3=line ; bottom: c1=wave c2=circle c3=chevron.
+// v47 : RÉGRESSEURS PLUS NOMBREUX ET ACTIFS.
+//   Diagnostic v46 : un seul régresseur (L3 idx9), mal placé → ne rencontrait jamais de cible
+//   ≥silver avec faces concordantes. Ici chaque plateau reçoit ≥1 paire régresseur↔cible
+//   dans la MÊME colonne, à rot 0, faces de contact ÉGALES (face2 du haut = face1 du bas),
+//   cible ≥silver. Séparées par une case vide → un simple slide les met au contact → régression
+//   visible (la cible descend d'un cran, le régresseur se consomme).
+//   Régresseur = 6e champ à 1. Faces grises épaisses (cf getDominoTex).
 // ── PLATEAU 1 — largeur 5 ──
 const LEVEL_1=[
-  [5,'white','wave','chevron',0],
+  [5,'white','wave','chevron',0,1],  // RÉGRESSEUR (col0,row1) : face2=chevron
+  [15,'gold','chevron','line',0],    // CIBLE gold (col0,row3) : face1=chevron → MATCH vertical
   [9,'silver','chevron','circle',0],
   [34,'gold','wave','line',0],
   [21,'white','circle','wave',0],   // PORTE
@@ -636,27 +644,31 @@ const LEVEL_1=[
 ];
 // ── PLATEAU 2 — largeur 4 ──
 const LEVEL_2=[
-  [10,'white','line','chevron',0],
+  [10,'white','line','circle',0,1],  // RÉGRESSEUR (col0,row2) : face2=circle
+  [20,'silver','circle','wave',0],   // CIBLE silver (col0,row4) : face1=circle → MATCH
   [13,'silver','circle','wave',0],
   [35,'white','line','circle',0],
   [21,'white','chevron','wave',0],  // PORTE
   [22,'white','wave','circle',0],   // PORTE
   [23,'white','line','chevron',0],  // PORTE
 ];
-// ── PLATEAU 3 — largeur 3, un régresseur ──
+// ── PLATEAU 3 — largeur 3, deux régresseurs ──
 const LEVEL_3=[
   [7,'white','line','circle',0],
-  [9,'silver','wave','chevron',0,1], // régresseur
-  [13,'gold','circle','wave',0],
+  [9,'silver','wave','chevron',0,1], // RÉGRESSEUR (col4,row1) : face2=chevron
+  [19,'gold','chevron','wave',0],    // CIBLE gold (col4,row3) : face1=chevron → MATCH
+  [10,'white','line','wave',0,1],    // RÉGRESSEUR (col0,row2) : face2=wave
+  [20,'silver','wave','line',0],     // CIBLE silver (col0,row4) : face1=wave → MATCH
   [21,'white','chevron','wave',0],  // PORTE
   [22,'white','wave','circle',0],   // PORTE
   [23,'white','line','chevron',0],  // PORTE
 ];
 // ── PLATEAU 4 — largeur 3 ──
 const LEVEL_4=[
-  [5,'white','circle','line',0],
-  [6,'silver','wave','circle',0],
+  [6,'white','circle','wave',0,1],   // RÉGRESSEUR (col1,row1) : face2=wave
+  [16,'gold','wave','circle',0],     // CIBLE gold (col1,row3) : face1=wave → MATCH
   [12,'white','chevron','line',0],
+  [5,'silver','circle','line',0],
   [21,'white','chevron','wave',0],  // PORTE
   [22,'white','wave','circle',0],   // PORTE
   [23,'white','line','chevron',0],  // PORTE
