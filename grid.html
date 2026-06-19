@@ -328,7 +328,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ADAM Stack — v50 · Second layer à plat (swipe vertical 1 doigt, cases alignées)</title>
+<title>ADAM Stack — v51 · Zoom commun aux 2 layers + actif toujours au-dessus à la bascule</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
@@ -2167,10 +2167,13 @@ let targetCamZ=CAM_Z, targetCamY=0, targetCamX=-PIVOT_X;
 // bonne échelle pendant la rotation : un seul geste continu, plus de "deux temps".
 function refreshZoom(boardIdx){
   const bi = (boardIdx==null) ? currentBoard : mod(boardIdx);
-  const d=boards[boardKey(currentLayer,bi)]; if(!d){ targetCamZ=baseFitZ; targetCamY=baseFitY; targetCamX=-PIVOT_X; return; }
+  if(!boards[boardKey(currentLayer,bi)]){ targetCamZ=baseFitZ; targetCamY=baseFitY; targetCamX=-PIVOT_X; return; }
   let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,n=0;
-  for(let i=0;i<TOTAL;i++){ const p=d[i]; if(!p)continue; const {col,row}=getPos(i); const {x,y}=cellToLocal(col,row);
-    minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++; }
+  // v51 : ZOOM COMMUN — l'emprise est mesurée sur TOUS les layers de la même face,
+  // pour que la bascule de layer ne change pas l'échelle (même matrice visuelle).
+  for(let L=0;L<NLAYERS;L++){ const d=boards[boardKey(L,bi)]; if(!d)continue;
+    for(let i=0;i<TOTAL;i++){ const p=d[i]; if(!p)continue; const {col,row}=getPos(i); const {x,y}=cellToLocal(col,row);
+      minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++; } }
   if(n===0){ targetCamZ=baseFitZ; targetCamY=baseFitY; targetCamX=-PIVOT_X; return; }
   // étendue + marge d'une cellule ; on garde l'axe X visé (-PIVOT_X) inchangé, on ne zoome qu'en Z/Y.
   const padW=(maxX-minX)+2.0*CELL_W, padH=(maxY-minY)+2.0*CELL_W;
@@ -2213,8 +2216,12 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     const ldim = (NLAYERS<2) ? 1 : layerDimFor(pl);          // atténuation de profondeur de CE layer
     // v50 : empilement à plat → le layer ACTIF se dessine au-dessus de l'inactif.
     if(NLAYERS>1){ const onTop = (pl===currentLayer); p.mesh.renderOrder = onTop?2:0;
-      p.mesh.traverse(c=>{ if(c.isMesh) c.renderOrder = onTop?2:0; }); }
-    if(!swapAnim){ p.mesh.position.z = SAT_LIFT; }
+      // v51 : à la bascule, l'inactif ne doit JAMAIS recouvrir l'actif. depthTest off
+      // sur l'inactif → l'ordre de rendu (renderOrder) tranche seul, l'actif passe devant.
+      p.mesh.traverse(c=>{ if(c.isMesh){ c.renderOrder = onTop?2:0;
+        const mm = Array.isArray(c.material)?c.material:[c.material]; mm.forEach(m=>{ if(m) m.depthTest = onTop; }); } }); }
+    // v51 : z marqué par layer (en plus du renderOrder) — l'actif devant, l'inactif derrière.
+    if(!swapAnim){ p.mesh.position.z = (NLAYERS>1 && pl!==currentLayer) ? -SAT_LIFT : SAT_LIFT; }
     // balancement décoratif (suspendu pendant rotation cube / fusion / autres anims bloquantes ; ET sur la cible : immobile).
     if(p.mesh.visible&&!isAnimating&&!swapAnim&&!busy&&!(rotAnim&&rotAnim.mesh===p.mesh)&&p.baseQuat&&!p.target){ const ph=tScaled*1.2+si*1.7;
       const amp=Math.min(1,(t-(p._settle||0)));
