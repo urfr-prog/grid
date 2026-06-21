@@ -337,9 +337,7 @@
     font-family:'SF Mono','Fira Code',monospace; color:rgba(220,220,235,0.9);
     overflow:hidden; user-select:none;
   }
-  /* v59 : rendu redressé 90° antihoraire. Le canvas a les dimensions LOGIQUES échangées
-     (largeur=100vh, hauteur=100vw) puis est tourné de -90° pour remplir l'écran physique
-     posé en paysage. transform-origin centré → la rotation pivote autour du milieu. */
+  /* v59 : redressement paysage (écran iPhone couché). */
   #c { position:fixed; top:50%; left:50%; width:100vh; height:100vw;
        transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center center;
        display:block; touch-action:none; cursor:default; }
@@ -406,7 +404,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const COLS=5, ROWS=8, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
+const COLS=5, ROWS=4, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 // ─── v49 : SECOND LAYER (bridage) ────────────────────────────────────────────
 //  Un plan jumeau en PROFONDEUR derrière chaque face du cube. La rotation cube
 //  change la FACE ; le swipe vertical 2 doigts change le LAYER actif. Deux
@@ -679,14 +677,14 @@ const LEVEL_1=[
   [5,'white','wave','chevron',0,1],  // RÉGRESSEUR (col0,row1) : face2=chevron
   [15,'gold','chevron','line',0],    // CIBLE gold (col0,row3) : face1=chevron → MATCH vertical
   [9,'silver','chevron','circle',0],
-  [34,'gold','wave','line',0],
+  [19,'gold','wave','line',0],       // v59 : ré-ancré dans la grille 5×4 (col4,row3)
 ];
 // ── PLATEAU 2 — largeur 4 ──
 const LEVEL_2=[
   [10,'white','line','circle',0,1],  // RÉGRESSEUR (col0,row2) : face2=circle
-  [20,'silver','circle','wave',0],   // CIBLE silver (col0,row4) : face1=circle → MATCH
+  [15,'silver','circle','wave',0],   // v59 : CIBLE silver ré-ancrée (col0,row3) → MATCH vertical sous le régresseur
   [13,'silver','circle','wave',0],
-  [35,'white','line','circle',0],
+  [18,'white','line','circle',0],    // v59 : ré-ancré (col3,row3)
 ];
 // ── PLATEAU 3 — largeur 3, deux régresseurs ──
 const LEVEL_3=[
@@ -694,7 +692,7 @@ const LEVEL_3=[
   [9,'silver','wave','chevron',0,1], // RÉGRESSEUR (col4,row1) : face2=chevron
   [19,'gold','chevron','wave',0],    // CIBLE gold (col4,row3) : face1=chevron → MATCH
   [10,'white','line','wave',0,1],    // RÉGRESSEUR (col0,row2) : face2=wave
-  [20,'silver','wave','line',0],     // CIBLE silver (col0,row4) : face1=wave → MATCH
+  [15,'silver','wave','line',0],     // v59 : CIBLE silver ré-ancrée (col0,row3) : face1=wave → MATCH
 ];
 // ── PLATEAU 4 — largeur 3 ──
 const LEVEL_4=[
@@ -753,10 +751,9 @@ function demoteFor(boardIdx){ const v=DEMOTE_BY_BOARD[mod(boardIdx)]; return v!=
 function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
 const canvas=document.getElementById('c');
-// v59 : dimensions LOGIQUES du jeu redressé. L'écran physique est posé en paysage,
-// le contenu est tourné de -90°, donc largeur logique = hauteur écran, et inversement.
-function VW(){ return window.innerHeight; }   // largeur logique  (= hauteur écran physique)
-function VH(){ return window.innerWidth;  }   // hauteur logique  (= largeur écran physique)
+// v59 : dimensions LOGIQUES (écran tourné -90° en paysage).
+function VW(){ return window.innerHeight; }
+function VH(){ return window.innerWidth;  }
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setSize(VW(),VH()); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
 const scene=new THREE.Scene();
@@ -1377,11 +1374,8 @@ function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus 
 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
-// v59 : canvas tourné -90°. Convertit un point écran PHYSIQUE (clientX,clientY) en NDC
-// du repère LOGIQUE redressé, sans getBoundingClientRect (faussé par la rotation CSS).
-//   localX = clientY ; localY = VH() - clientX
-function setNDC(cx,cy){ const lx=cy, ly=VH()-cx;
-  mouseV.x=(lx/VW())*2-1; mouseV.y=-(ly/VH())*2+1; }
+// v59 : canvas tourné -90°. clientX/clientY physiques → NDC du repère logique redressé.
+function setNDC(cx,cy){ const lx=cy, ly=VH()-cx; mouseV.x=(lx/VW())*2-1; mouseV.y=-(ly/VH())*2+1; }
 function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
   const meshes=[]; curBoard().forEach(p=>{ if(p&&p.mesh&&p.mesh.visible)p.mesh.traverse(c=>{if(c.isMesh)meshes.push(c);}); });
   for(const h of raycaster.intersectObjects(meshes,false)){ let o=h.object;
@@ -1454,9 +1448,7 @@ function dropPiece(cx,cy){
 }
 
 let downX=0,downY=0,downT=0,moved=false;
-// v59 : coordonnées LOGIQUES redressées d'un event (rotation -90°). Les deltas de geste
-// raisonnent dans ce repère pour SUIVRE la rotation physique. pieceAt/cellAt/dropPiece
-// reçoivent au contraire clientX/clientY BRUTS (conversion interne via setNDC).
+// v59 : deltas de geste dans le repère redressé (-90°).
 function LX(e){ return e.clientY; }
 function LY(e){ return VH()-e.clientX; }
 let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
@@ -1552,7 +1544,6 @@ canvas.addEventListener('pointerup',e=>{
   dragPiece=null;
 });
 canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; refreshZoom(); } dragPiece=null; });
-// v59 : X dans le repère LOGIQUE redressé (pour comparer au doigt via LX(e)).
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
   const sp=wp.clone().project(camera); return (sp.x*0.5+0.5)*VW(); }
 
