@@ -337,7 +337,12 @@
     font-family:'SF Mono','Fira Code',monospace; color:rgba(220,220,235,0.9);
     overflow:hidden; user-select:none;
   }
-  #c { position:fixed; top:0; left:0; width:100vw; height:100vh; display:block; touch-action:none; cursor:default; }
+  /* v59 : rendu redressé 90° antihoraire. Le canvas a les dimensions LOGIQUES échangées
+     (largeur=100vh, hauteur=100vw) puis est tourné de -90° pour remplir l'écran physique
+     posé en paysage. transform-origin centré → la rotation pivote autour du milieu. */
+  #c { position:fixed; top:50%; left:50%; width:100vh; height:100vw;
+       transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center center;
+       display:block; touch-action:none; cursor:default; }
   .info-bar { display:flex; gap:16px; margin-top:10px; font-size:0.65rem; color:rgba(180,180,200,0.5); letter-spacing:0.1em; }
   .info-bar span { color:rgba(220,220,235,0.8); }
   /* v34 : la nav plateau quitte le bas (zone pouce encombrée) pour une BARRE HAUTE large.
@@ -748,10 +753,16 @@ function demoteFor(boardIdx){ const v=DEMOTE_BY_BOARD[mod(boardIdx)]; return v!=
 function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
 const canvas=document.getElementById('c');
+// v59 : dimensions LOGIQUES du jeu redressé. L'écran physique est posé en paysage,
+// le contenu est tourné de -90°, donc la largeur logique du jeu = hauteur physique
+// de l'écran, et inversement. Toute la logique de cadrage (pensée portrait) reste
+// valable dans ce repère logique.
+function VW(){ return window.innerHeight; }   // largeur logique  (= hauteur écran physique)
+function VH(){ return window.innerWidth;  }   // hauteur logique  (= largeur écran physique)
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-renderer.setSize(window.innerWidth,window.innerHeight); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
+renderer.setSize(VW(),VH()); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
 const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera(42,window.innerWidth/window.innerHeight,0.1,200); scene.add(new THREE.AmbientLight(0xffffff,0.95));
+const camera=new THREE.PerspectiveCamera(42,VW()/VH(),0.1,200); scene.add(new THREE.AmbientLight(0xffffff,0.95));
 
 const FACE_W=COLS*CELL_W, FACE_H=ROWS*CELL_W, HALF=FACE_W/2, CAM_Z=11;
 const stackGroup=new THREE.Group(); scene.add(stackGroup);
@@ -1283,7 +1294,7 @@ function refreshZoomSlide(){
     for(let i=0;i<TOTAL;i++){ if(!da[i])continue; acc(colOf(i),rowOf(i)); } }
   if(n===0)return;
   const padW=(maxX-minX)+2.0*CELL_W, padH=(maxY-minY)+2.0*CELL_W;
-  const aspect=window.innerWidth/window.innerHeight;
+  const aspect=VW()/VH();
   const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
   const needZh=padH/(2*Math.tan(vFOVcache/2));
   const zMin=Math.max(baseFitZ*0.45, needZh);  // v43 : ne pas passer sous la contrainte hauteur (écran large)
@@ -1368,15 +1379,22 @@ function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus 
 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
-function pieceAt(cx,cy){ const r=canvas.getBoundingClientRect();
-  mouseV.x=((cx-r.left)/r.width)*2-1; mouseV.y=-((cy-r.top)/r.height)*2+1; raycaster.setFromCamera(mouseV,camera);
+// v59 : le canvas est tourné de -90° (antihoraire). On convertit un point écran PHYSIQUE
+// (clientX,clientY) en NDC du repère LOGIQUE redressé, sans passer par getBoundingClientRect
+// (dont la boîte est faussée par la rotation CSS). Mapping rotation -90° :
+//   localX = clientY              (l'axe vertical physique devient l'axe X logique)
+//   localY = VH() - clientX       (l'axe horizontal physique devient l'axe Y logique inversé)
+function setNDC(cx,cy){ const lx=cy, ly=VH()-cx;
+  mouseV.x=(lx/VW())*2-1; mouseV.y=-(ly/VH())*2+1; }
+function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
   const meshes=[]; curBoard().forEach(p=>{ if(p&&p.mesh&&p.mesh.visible)p.mesh.traverse(c=>{if(c.isMesh)meshes.push(c);}); });
   for(const h of raycaster.intersectObjects(meshes,false)){ let o=h.object;
     while(o){ if(o.userData&&o.userData.isDomino){ const found=curBoard().find(p=>p&&p.mesh===o); if(found)return found; } o=o.parent; } }
   return null;
 }
 // convertit un déplacement pixel en déplacement monde approx (échelle plan de tête)
-function pxToWorld(px){ const r=canvas.getBoundingClientRect(); return (px/r.width)*FACE_W; }
+// v59 : un déplacement logique se mesure sur la largeur LOGIQUE (VW()), pas sur r.width.
+function pxToWorld(px){ return (px/VW())*FACE_W; }
 
 // ─── TRANSFERT INTER-PLATEAUX (LONG PRESS) ───────────────────────────────────
 //  Long press sur un domino → il se VERROUILLE et FLOTTE (attaché à la scène, fixe
@@ -1388,8 +1406,7 @@ let pressTimer=null, lockFloatBase=null;
 
 // case (col,row) du plateau courant sous un point écran (raycast sur le plan de grille)
 function cellAt(cx,cy){
-  const r=canvas.getBoundingClientRect();
-  mouseV.x=((cx-r.left)/r.width)*2-1; mouseV.y=-((cy-r.top)/r.height)*2+1; raycaster.setFromCamera(mouseV,camera);
+  setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
   const g=gridMeshes[boardKey(currentLayer,currentBoard)]; if(!g) return null;
   const hit=raycaster.intersectObject(g,false); if(!hit.length) return null;
   const lp=g.worldToLocal(hit[0].point.clone());
@@ -1443,6 +1460,12 @@ function dropPiece(cx,cy){
 
 let downX=0,downY=0,downT=0,moved=false;
 let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
+// v59 : coordonnées LOGIQUES redressées d'un event (rotation -90°). Tous les deltas de geste
+// (slide, swipe-nav, choix d'axe) raisonnent dans ce repère pour SUIVRE la rotation physique.
+// Les fonctions de raycast (pieceAt/cellAt/dropPiece) reçoivent au contraire clientX/clientY
+// BRUTS car elles font leur propre conversion via setNDC.
+function LX(e){ return e.clientY; }
+function LY(e){ return VH()-e.clientX; }
 // ─── v50 : BASCULE DE LAYER (swipe vertical 1 doigt depuis le VIDE) ───────────
 //  Réutilise le canal navSwipe (geste armé hors domino). Swipe vertical ample =
 //  change le layer actif ; swipe horizontal = rotation cube ; geste sur un domino
@@ -1460,7 +1483,7 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
 }
 canvas.addEventListener('pointerdown',e=>{
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
-  if(lockedPiece){ downX=e.clientX; downY=e.clientY; downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
+  if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
   if(isAnimating||swapAnim||migrating)return;
   if(busy && !rotAnim)return;
@@ -1468,11 +1491,11 @@ canvas.addEventListener('pointerdown',e=>{
   if(!dragPiece){
     // VIDE (hors pièce) : on arme un swipe horizontal → navigation plateau. Grande zone tactile.
     if(!isAnimating&&!swapAnim&&!migrating&&!(busy&&!rotAnim)){
-      navSwipeX=e.clientX; navSwipeY=e.clientY; navSwipeT=Date.now(); canvas.setPointerCapture(e.pointerId);
+      navSwipeX=LX(e); navSwipeY=LY(e); navSwipeT=Date.now(); canvas.setPointerCapture(e.pointerId);
     }
     return;
   }
-  downX=e.clientX; downY=e.clientY; downT=Date.now(); moved=false;
+  downX=LX(e); downY=LY(e); downT=Date.now(); moved=false;
   dragging=true; dragAxis=null;
   const i=curBoard().indexOf(dragPiece); dragRow=rowOf(i); dragCol=colOf(i);
   canvas.setPointerCapture(e.pointerId);
@@ -1485,7 +1508,7 @@ canvas.addEventListener('pointerdown',e=>{
 });
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
-  const dx=e.clientX-downX, dy=e.clientY-downY;
+  const dx=LX(e)-downX, dy=LY(e)-downY;
   if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
   if(lockedPiece) return;   // pièce flottante : pas de slide ; le swipe est traité au pointerup (nav)
   if(dragAxis===null){
@@ -1502,7 +1525,7 @@ canvas.addEventListener('pointerup',e=>{
   clearTimeout(pressTimer);
   // SWIPE-NAV depuis le vide : geste horizontal ample → changer de plateau.
   if(navSwipeX!=null){
-    const ndx=e.clientX-navSwipeX, ndy=e.clientY-navSwipeY;
+    const ndx=LX(e)-navSwipeX, ndy=LY(e)-navSwipeY;
     navSwipeX=navSwipeY=null;
     if(!dragging){
       // VERTICAL ample → bascule de layer (haut = plan arrière, bas = plan avant)
@@ -1513,7 +1536,7 @@ canvas.addEventListener('pointerup',e=>{
   }
   if(!dragging){ return; }
   dragging=false;
-  const dx=e.clientX-downX, dy=e.clientY-downY, dt=Date.now()-downT;
+  const dx=LX(e)-downX, dy=LY(e)-downY, dt=Date.now()-downT;
   const dist=Math.hypot(dx,dy);
   // ── PIÈCE FLOTTANTE (transfert) : swipe horizontal = nav plateau ; tap = dépose ──
   if(lockedPiece){
@@ -1525,7 +1548,7 @@ canvas.addEventListener('pointerup',e=>{
     // TAP → rotation (bridé V44) OU commutation porte (expérimental V45)
     if(TAP_ROTATION){
       const sx=screenXOf(dragPiece.mesh);
-      rotatePiece(curBoard().indexOf(dragPiece), e.clientX>sx);
+      rotatePiece(curBoard().indexOf(dragPiece), LX(e)>sx);
     } else if(TAP_COMMUTE_PORTE){
       commutePorte(curBoard().indexOf(dragPiece));
     }
@@ -1535,8 +1558,9 @@ canvas.addEventListener('pointerup',e=>{
   dragPiece=null;
 });
 canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; refreshZoom(); } dragPiece=null; });
+// v59 : X dans le repère LOGIQUE redressé (pour comparer au doigt via LX(e)).
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
-  const sp=wp.clone().project(camera); const r=canvas.getBoundingClientRect(); return r.left+(sp.x*0.5+0.5)*r.width; }
+  const sp=wp.clone().project(camera); return (sp.x*0.5+0.5)*VW(); }
 
 // navigation manuelle (debug / exploration de la pile) au clavier + dots
 document.addEventListener('keydown',e=>{
@@ -2187,7 +2211,7 @@ let TS=1;
 })();
 // Cadre la pile pour qu'elle tienne à l'écran quel que soit le format (portrait mobile inclus).
 function fitCamera(){
-  const w=window.innerWidth, h=window.innerHeight, aspect=w/h;
+  const w=VW(), h=VH(), aspect=w/h;
   renderer.setSize(w,h); camera.aspect=aspect;
   const vFOV=camera.fov*Math.PI/180;
   // Comme prisme V11 : la grille occupe le maximum de largeur en ne laissant qu'un petit
@@ -2235,7 +2259,7 @@ function refreshZoom(boardIdx){
   if(n===0){ targetCamZ=baseFitZ; targetCamY=baseFitY; targetCamX=-PIVOT_X; return; }
   // étendue + marge d'une cellule ; on garde l'axe X visé (-PIVOT_X) inchangé, on ne zoome qu'en Z/Y.
   const padW=(maxX-minX)+2.0*CELL_W, padH=(maxY-minY)+2.0*CELL_W;
-  const aspect=window.innerWidth/window.innerHeight;
+  const aspect=VW()/VH();
   const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
   const needZh=padH/(2*Math.tan(vFOVcache/2));
   // v43 : la borne basse du zoom (= rapprochement max) ne doit JAMAIS passer sous ce que la
@@ -2345,7 +2369,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // principal SUIT l'étendue qui passe de 3 à 4/5 colonnes. Ici, simple lissage vers targetCamZ.
   let zGoal=targetCamZ, bell=0;
   if(isAnimating){
-    const aspect=window.innerWidth/window.innerHeight;
+    const aspect=VW()/VH();
     const halfSweep=(FACE_W/2+Math.abs(PIVOT_X))+0.4*CELL_W;
     const zSafe=halfSweep/(Math.tan(vFOVcache/2)*aspect);
     const dotv=Math.min(1,Math.abs(cubeGroup.quaternion.dot(targetQuat)));
