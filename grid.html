@@ -337,10 +337,9 @@
     font-family:'SF Mono','Fira Code',monospace; color:rgba(220,220,235,0.9);
     overflow:hidden; user-select:none;
   }
-  /* v59 : redressement paysage (écran iPhone couché). */
-  #c { position:fixed; top:50%; left:50%; width:100vh; height:100vw;
-       transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center center;
-       display:block; touch-action:none; cursor:default; }
+  /* v59 : canvas plein écran normal — aucune rotation CSS. Le cadrage (paysage, confinement
+     gauche) est géré entièrement par la caméra 3D, pour ne jamais déformer les cases. */
+  #c { position:fixed; top:0; left:0; width:100vw; height:100vh; display:block; touch-action:none; cursor:default; }
   .info-bar { display:flex; gap:16px; margin-top:10px; font-size:0.65rem; color:rgba(180,180,200,0.5); letter-spacing:0.1em; }
   .info-bar span { color:rgba(220,220,235,0.8); }
   /* v34 : la nav plateau quitte le bas (zone pouce encombrée) pour une BARRE HAUTE large.
@@ -751,9 +750,9 @@ function demoteFor(boardIdx){ const v=DEMOTE_BY_BOARD[mod(boardIdx)]; return v!=
 function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
 const canvas=document.getElementById('c');
-// v59 : dimensions LOGIQUES (écran tourné -90° en paysage).
-function VW(){ return window.innerHeight; }
-function VH(){ return window.innerWidth;  }
+// v59 : repère écran NORMAL (pas de rotation CSS). Le renderer remplit l'écran réel.
+function VW(){ return window.innerWidth; }
+function VH(){ return window.innerHeight; }
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setSize(VW(),VH()); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
 const scene=new THREE.Scene();
@@ -1374,8 +1373,8 @@ function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus 
 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
-// v59 : canvas tourné -90°. clientX/clientY physiques → NDC du repère logique redressé.
-function setNDC(cx,cy){ const lx=cy, ly=VH()-cx; mouseV.x=(lx/VW())*2-1; mouseV.y=-(ly/VH())*2+1; }
+// v59 : mapping écran normal (pas de rotation). NDC standard plein écran.
+function setNDC(cx,cy){ mouseV.x=(cx/VW())*2-1; mouseV.y=-(cy/VH())*2+1; }
 function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
   const meshes=[]; curBoard().forEach(p=>{ if(p&&p.mesh&&p.mesh.visible)p.mesh.traverse(c=>{if(c.isMesh)meshes.push(c);}); });
   for(const h of raycaster.intersectObjects(meshes,false)){ let o=h.object;
@@ -1384,7 +1383,6 @@ function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
 }
 // convertit un déplacement pixel en déplacement monde approx (échelle plan de tête)
 function pxToWorld(px){ return (px/VW())*FACE_W; }
-
 // ─── TRANSFERT INTER-PLATEAUX (LONG PRESS) ───────────────────────────────────
 //  Long press sur un domino → il se VERROUILLE et FLOTTE (attaché à la scène, fixe
 //  devant la caméra). On navigue alors vers un autre plateau (swipe/flèches/dots).
@@ -1448,9 +1446,9 @@ function dropPiece(cx,cy){
 }
 
 let downX=0,downY=0,downT=0,moved=false;
-// v59 : deltas de geste dans le repère redressé (-90°).
-function LX(e){ return e.clientY; }
-function LY(e){ return VH()-e.clientX; }
+// v59 : deltas de geste en repère écran normal.
+function LX(e){ return e.clientX; }
+function LY(e){ return e.clientY; }
 let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
 // ─── v50 : BASCULE DE LAYER (swipe vertical 1 doigt depuis le VIDE) ───────────
 //  Réutilise le canal navSwipe (geste armé hors domino). Swipe vertical ample =
@@ -1546,7 +1544,6 @@ canvas.addEventListener('pointerup',e=>{
 canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; refreshZoom(); } dragPiece=null; });
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
   const sp=wp.clone().project(camera); return (sp.x*0.5+0.5)*VW(); }
-
 // navigation manuelle (debug / exploration de la pile) au clavier + dots
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){ doUndo(); e.preventDefault(); return; }
@@ -2196,6 +2193,7 @@ let TS=1;
 })();
 // Cadre la pile pour qu'elle tienne à l'écran quel que soit le format (portrait mobile inclus).
 function fitCamera(){
+  // v59 : repère écran normal, plein écran. Cadrage classique — cases carrées garanties.
   const w=VW(), h=VH(), aspect=w/h;
   renderer.setSize(w,h); camera.aspect=aspect;
   const vFOV=camera.fov*Math.PI/180;
