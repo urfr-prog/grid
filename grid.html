@@ -409,11 +409,11 @@ const COLS=5, ROWS=4, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 //  change la FACE ; le swipe vertical 2 doigts change le LAYER actif. Deux
 //  grammaires orthogonales. Affichage + navigation seulement (aucune mécanique
 //  de croisement encore). boards reste PLAT : index = boardKey(layer,face).
-const FLAG_LAYER2=true;                 // bridage : false = comportement v48 strict
-const NLAYERS = FLAG_LAYER2 ? 2 : 1;    // nombre de couches en profondeur
-const LAYER_GAP = 0.06;                 // v50 : empilement À PLAT — écart Z minime (anti z-fighting),
-                                        //        cases pile alignées à l'écran (pas de recul de perspective).
-let currentLayer=0;                     // 0 = avant, 1 = arrière
+// v59 : LAYERS SUPPRIMÉS définitivement. Un seul système de 4 plateaux (NLAYERS=1).
+const FLAG_LAYER2=false;
+const NLAYERS = 1;
+const LAYER_GAP = 0;
+let currentLayer=0;                     // conservé à 0 (un seul layer) pour compat des appels
 function boardKey(layer,face){ return layer*NBOARDS + face; }
 // ── BRIDAGE V44 (interrupteurs, rien supprimé) ──
 //   TAP_ROTATION false : le tap ne fait plus tourner le domino
@@ -1512,9 +1512,7 @@ canvas.addEventListener('pointerup',e=>{
     const ndx=LX(e)-navSwipeX, ndy=LY(e)-navSwipeY;
     navSwipeX=navSwipeY=null;
     if(!dragging){
-      // VERTICAL ample → bascule de layer (haut = plan arrière, bas = plan avant)
-      if(Math.abs(ndy)>=48 && Math.abs(ndy)>Math.abs(ndx)){ switchLayer(ndy<0?1:-1); return; }
-      // HORIZONTAL ample → rotation cube (changer de face)
+      // v59 : layers supprimés → plus de bascule verticale. HORIZONTAL ample → rotation cube.
       if(Math.abs(ndx)>=40 && Math.abs(ndx)>Math.abs(ndy)){ ndx>0?navRight():navLeft(); return; }
     }
   }
