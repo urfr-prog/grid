@@ -754,9 +754,7 @@ function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0
 
 const canvas=document.getElementById('c');
 // v59 : dimensions LOGIQUES du jeu redressé. L'écran physique est posé en paysage,
-// le contenu est tourné de -90°, donc la largeur logique du jeu = hauteur physique
-// de l'écran, et inversement. Toute la logique de cadrage (pensée portrait) reste
-// valable dans ce repère logique.
+// le contenu est tourné de -90°, donc largeur logique = hauteur écran, et inversement.
 function VW(){ return window.innerHeight; }   // largeur logique  (= hauteur écran physique)
 function VH(){ return window.innerWidth;  }   // hauteur logique  (= largeur écran physique)
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -1379,11 +1377,9 @@ function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus 
 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
-// v59 : le canvas est tourné de -90° (antihoraire). On convertit un point écran PHYSIQUE
-// (clientX,clientY) en NDC du repère LOGIQUE redressé, sans passer par getBoundingClientRect
-// (dont la boîte est faussée par la rotation CSS). Mapping rotation -90° :
-//   localX = clientY              (l'axe vertical physique devient l'axe X logique)
-//   localY = VH() - clientX       (l'axe horizontal physique devient l'axe Y logique inversé)
+// v59 : canvas tourné -90°. Convertit un point écran PHYSIQUE (clientX,clientY) en NDC
+// du repère LOGIQUE redressé, sans getBoundingClientRect (faussé par la rotation CSS).
+//   localX = clientY ; localY = VH() - clientX
 function setNDC(cx,cy){ const lx=cy, ly=VH()-cx;
   mouseV.x=(lx/VW())*2-1; mouseV.y=-(ly/VH())*2+1; }
 function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
@@ -1393,7 +1389,6 @@ function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
   return null;
 }
 // convertit un déplacement pixel en déplacement monde approx (échelle plan de tête)
-// v59 : un déplacement logique se mesure sur la largeur LOGIQUE (VW()), pas sur r.width.
 function pxToWorld(px){ return (px/VW())*FACE_W; }
 
 // ─── TRANSFERT INTER-PLATEAUX (LONG PRESS) ───────────────────────────────────
@@ -1459,13 +1454,12 @@ function dropPiece(cx,cy){
 }
 
 let downX=0,downY=0,downT=0,moved=false;
-let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
-// v59 : coordonnées LOGIQUES redressées d'un event (rotation -90°). Tous les deltas de geste
-// (slide, swipe-nav, choix d'axe) raisonnent dans ce repère pour SUIVRE la rotation physique.
-// Les fonctions de raycast (pieceAt/cellAt/dropPiece) reçoivent au contraire clientX/clientY
-// BRUTS car elles font leur propre conversion via setNDC.
+// v59 : coordonnées LOGIQUES redressées d'un event (rotation -90°). Les deltas de geste
+// raisonnent dans ce repère pour SUIVRE la rotation physique. pieceAt/cellAt/dropPiece
+// reçoivent au contraire clientX/clientY BRUTS (conversion interne via setNDC).
 function LX(e){ return e.clientY; }
 function LY(e){ return VH()-e.clientX; }
+let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
 // ─── v50 : BASCULE DE LAYER (swipe vertical 1 doigt depuis le VIDE) ───────────
 //  Réutilise le canal navSwipe (geste armé hors domino). Swipe vertical ample =
 //  change le layer actif ; swipe horizontal = rotation cube ; geste sur un domino
