@@ -337,8 +337,8 @@
     font-family:'SF Mono','Fira Code',monospace; color:rgba(220,220,235,0.9);
     overflow:hidden; user-select:none;
   }
-  /* v59 : canvas plein écran normal — aucune rotation CSS. Le cadrage (paysage, confinement
-     gauche) est géré entièrement par la caméra 3D, pour ne jamais déformer les cases. */
+  /* v59 : redressement paysage (écran iPhone couché). */
+  /* v60c : dérotation — canvas plein écran normal (0°). Paysage obtenu nativement. */
   #c { position:fixed; top:0; left:0; width:100vw; height:100vh; display:block; touch-action:none; cursor:default; }
   .info-bar { display:flex; gap:16px; margin-top:10px; font-size:0.65rem; color:rgba(180,180,200,0.5); letter-spacing:0.1em; }
   .info-bar span { color:rgba(220,220,235,0.8); }
@@ -409,11 +409,11 @@ const COLS=5, ROWS=4, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 //  change la FACE ; le swipe vertical 2 doigts change le LAYER actif. Deux
 //  grammaires orthogonales. Affichage + navigation seulement (aucune mécanique
 //  de croisement encore). boards reste PLAT : index = boardKey(layer,face).
-// v59 : LAYERS SUPPRIMÉS définitivement. Un seul système de 4 plateaux (NLAYERS=1).
-const FLAG_LAYER2=false;
-const NLAYERS = 1;
-const LAYER_GAP = 0;
-let currentLayer=0;                     // conservé à 0 (un seul layer) pour compat des appels
+const FLAG_LAYER2=false;                // v60a2 : bi-layer RETIRÉ → un seul plan par système
+const NLAYERS = FLAG_LAYER2 ? 2 : 1;    // nombre de couches en profondeur
+const LAYER_GAP = 0.06;                 // v50 : empilement À PLAT — écart Z minime (anti z-fighting),
+                                        //        cases pile alignées à l'écran (pas de recul de perspective).
+let currentLayer=0;                     // 0 = avant, 1 = arrière
 function boardKey(layer,face){ return layer*NBOARDS + face; }
 // ── BRIDAGE V44 (interrupteurs, rien supprimé) ──
 //   TAP_ROTATION false : le tap ne fait plus tourner le domino
@@ -750,7 +750,7 @@ function demoteFor(boardIdx){ const v=DEMOTE_BY_BOARD[mod(boardIdx)]; return v!=
 function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
 const canvas=document.getElementById('c');
-// v59 : repère écran NORMAL (pas de rotation CSS). Le renderer remplit l'écran réel.
+// v60c : repère écran NORMAL (0°). Le renderer remplit l'écran réel.
 function VW(){ return window.innerWidth; }
 function VH(){ return window.innerHeight; }
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -1373,7 +1373,7 @@ function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus 
 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
-// v59 : mapping écran normal (pas de rotation). NDC standard plein écran.
+// v60c : mapping écran normal (0°). NDC standard plein écran.
 function setNDC(cx,cy){ mouseV.x=(cx/VW())*2-1; mouseV.y=-(cy/VH())*2+1; }
 function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
   const meshes=[]; curBoard().forEach(p=>{ if(p&&p.mesh&&p.mesh.visible)p.mesh.traverse(c=>{if(c.isMesh)meshes.push(c);}); });
@@ -1383,6 +1383,7 @@ function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
 }
 // convertit un déplacement pixel en déplacement monde approx (échelle plan de tête)
 function pxToWorld(px){ return (px/VW())*FACE_W; }
+
 // ─── TRANSFERT INTER-PLATEAUX (LONG PRESS) ───────────────────────────────────
 //  Long press sur un domino → il se VERROUILLE et FLOTTE (attaché à la scène, fixe
 //  devant la caméra). On navigue alors vers un autre plateau (swipe/flèches/dots).
@@ -1446,7 +1447,7 @@ function dropPiece(cx,cy){
 }
 
 let downX=0,downY=0,downT=0,moved=false;
-// v59 : deltas de geste en repère écran normal.
+// v60c : deltas de geste en repère écran normal (0°).
 function LX(e){ return e.clientX; }
 function LY(e){ return e.clientY; }
 let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
@@ -1512,7 +1513,8 @@ canvas.addEventListener('pointerup',e=>{
     const ndx=LX(e)-navSwipeX, ndy=LY(e)-navSwipeY;
     navSwipeX=navSwipeY=null;
     if(!dragging){
-      // v59 : layers supprimés → plus de bascule verticale. HORIZONTAL ample → rotation cube.
+      // v60a2 : bi-layer retiré → le geste de bascule-layer est NEUTRE (ne fait plus rien).
+      // HORIZONTAL ample → rotation cube (changer de face)
       if(Math.abs(ndx)>=40 && Math.abs(ndx)>Math.abs(ndy)){ ndx>0?navRight():navLeft(); return; }
     }
   }
@@ -1542,6 +1544,7 @@ canvas.addEventListener('pointerup',e=>{
 canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; refreshZoom(); } dragPiece=null; });
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
   const sp=wp.clone().project(camera); return (sp.x*0.5+0.5)*VW(); }
+
 // navigation manuelle (debug / exploration de la pile) au clavier + dots
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){ doUndo(); e.preventDefault(); return; }
@@ -2191,7 +2194,6 @@ let TS=1;
 })();
 // Cadre la pile pour qu'elle tienne à l'écran quel que soit le format (portrait mobile inclus).
 function fitCamera(){
-  // v59 : repère écran normal, plein écran. Cadrage classique — cases carrées garanties.
   const w=VW(), h=VH(), aspect=w/h;
   renderer.setSize(w,h); camera.aspect=aspect;
   const vFOV=camera.fov*Math.PI/180;
@@ -2259,6 +2261,27 @@ function refreshZoom(boardIdx){
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); fitCamera();
 window.addEventListener('resize',fitCamera);
+
+// ─── v60a : FONDATION FACTORY (palier mini, iso-v5) ──────────────────────────
+//  Étape préparatoire au split-screen indépendant. On enveloppe l'état PAR-SYSTÈME
+//  dans un objet SYS qui RÉFÉRENCE (ne duplique pas encore) les globals existants.
+//  À ce stade il n'y a qu'UN système → rendu strictement identique à la v5.
+//  Le 2e système (createSystem) viendra brancher sur cette même indirection.
+const SYS = {
+  scene,            // THREE.Scene
+  camera,           // THREE.PerspectiveCamera
+  renderer,         // partagé (un seul contexte WebGL)
+  // viewport logique du système dans le canvas (plein écran pour l'instant).
+  vp:{ x:0, y:0, w:1, h:1 },
+  render(){
+    // rendu du système dans son viewport (ici plein écran → comportement v5).
+    const W=VW(), H=VH();
+    const px=Math.round(this.vp.x*W), py=Math.round(this.vp.y*H);
+    const pw=Math.round(this.vp.w*W), ph=Math.round(this.vp.h*H);
+    this.renderer.setViewport(px,py,pw,ph);
+    this.renderer.render(this.scene,this.camera);
+  }
+};
 function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const dtRaw=t-last; last=t; const dt=dtRaw*TS; tScaled+=dt;
   if(isAnimating){
     // ROTATION DU CUBE : slerp doux vers l'orientation cible (façon mada)
@@ -2375,7 +2398,8 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     cubeGroup.position.z = -RADIUS + layerFade*LAYER_GAP;
   }
   camera.lookAt(camera.position.x, camera.position.y, 0);
-  renderer.render(scene,camera);
+  // v60a : rendu routé via la fondation factory (un seul système → iso-v5).
+  SYS.render();
 }
 buildBoards(); assignFaces(); updateUI(); animate();
 // v28 : check au démarrage pour détecter les twins déjà présents dans le board initial
