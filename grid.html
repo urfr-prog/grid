@@ -387,17 +387,34 @@
   .opt-btn:hover { border-color:#22d3ee; color:#22d3ee; }
   .opt-btn:active { transform:scale(0.92); }
   .opt-btn.off { color:rgba(34,211,238,0.3); border-color:rgba(34,211,238,0.15); }
+  /* ─── v60j : MODE DEUX SYSTÈMES côte à côte ──────────────────────────────
+     #stage couvre l'écran et pose les deux .sys côte à côte (gauche|droite).
+     Chaque .sys est un demi-écran autonome ; ses éléments UI passent en
+     position:absolute (relatifs au .sys) au lieu de fixed (viewport). */
+  #stage { position:fixed; inset:0; display:flex; }
+  .sys { position:relative; flex:1 1 50%; height:100%; overflow:hidden; }
+  /* canvas : remplit SON demi-écran, rotation -90° calée sur le centre du demi-écran. */
+  .sys #c { position:absolute; top:50%; left:50%; width:100%; height:100%;
+            transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center center; }
+  /* UI scopée au demi-écran : ce qui était fixed/left:50% devient absolute dans le .sys */
+  .sys .nav-bar,
+  .sys .goal-tag,
+  .sys .toast,
+  .sys .undo-btn,
+  .sys .opt-btn,
+  .sys #slowmo { position:absolute; }
 </style>
 </head>
 <body>
-  <!-- v60e : tout le système est enveloppé dans #sysA (fondation pour le 2e système).
-       Conteneur neutre : les enfants gardent leur position:fixed → aucun changement visuel. -->
+  <!-- v60j : deux systèmes côte à côte dans #stage. Chaque .sys est un demi-écran autonome.
+       Les IDs internes sont dupliqués : le helper $() les résout dans le root de chaque système. -->
+  <div id="stage">
   <div id="sysA" class="sys">
   <canvas id="c"></canvas>
   <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
   <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
   <button id="medBtn" class="opt-btn" aria-label="Médianes">▤</button>
-  <div id="slowmo" style="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);z-index:200;display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:18px;background:rgba(22,23,38,0.78);backdrop-filter:blur(6px);font:12px system-ui,sans-serif;color:rgba(180,200,220,0.9);">
+  <div id="slowmo" style="left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);z-index:200;display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:18px;background:rgba(22,23,38,0.78);backdrop-filter:blur(6px);font:12px system-ui,sans-serif;color:rgba(180,200,220,0.9);">
     <span style="opacity:0.7;">🐢</span>
     <input id="tsSlider" type="range" min="5" max="150" value="100" style="width:120px;accent-color:#22d3ee;">
     <span id="tsLabel" style="min-width:34px;text-align:right;font-variant-numeric:tabular-nums;">1.00×</span>
@@ -405,6 +422,20 @@
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
   </div><!-- /#sysA -->
+  <div id="sysB" class="sys">
+  <canvas id="c"></canvas>
+  <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
+  <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
+  <button id="medBtn" class="opt-btn" aria-label="Médianes">▤</button>
+  <div id="slowmo" style="left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);z-index:200;display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:18px;background:rgba(22,23,38,0.78);backdrop-filter:blur(6px);font:12px system-ui,sans-serif;color:rgba(180,200,220,0.9);">
+    <span style="opacity:0.7;">🐢</span>
+    <input id="tsSlider" type="range" min="5" max="150" value="100" style="width:120px;accent-color:#22d3ee;">
+    <span id="tsLabel" style="min-width:34px;text-align:right;font-variant-numeric:tabular-nums;">1.00×</span>
+  </div>
+  <div class="toast" id="toast"></div>
+  <div class="goal-tag" id="goalTag"></div>
+  </div><!-- /#sysB -->
+  </div><!-- /#stage -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -418,7 +449,7 @@ const FLAG_LAYER2=false;                // v60a2 : bi-layer RETIRÉ → un seul 
 const NLAYERS = FLAG_LAYER2 ? 2 : 1;    // nombre de couches en profondeur
 const LAYER_GAP = 0.06;                 // v50 : empilement À PLAT — écart Z minime (anti z-fighting),
                                         //        cases pile alignées à l'écran (pas de recul de perspective).
-let currentLayer=0;                     // 0 = avant, 1 = arrière
+// v60h2 : currentLayer est par-système → déplacé dans la factory.
 function boardKey(layer,face){ return layer*NBOARDS + face; }
 // ── BRIDAGE V44 (interrupteurs, rien supprimé) ──
 //   TAP_ROTATION false : le tap ne fait plus tourner le domino
@@ -645,12 +676,9 @@ const DEMO_LEVEL=[
 // idx 7 = col 2, row 1 (porte haute centrale). Multi-porte dès le départ : tableau.
 // v46 : PLUS DE PORTES NATIVES. La barre fixe 21/22/23 est supprimée — toute porte est
 // désormais un CHOIX du joueur (tap). PORTE_POSITIONS démarre vide, max MAX_PORTES portes.
-let PORTE_POSITIONS=[];
 const MAX_PORTES=4;
-// v58 (modèle A1) : tiroir de sauvegarde des dominos écrasés par une porte. Indexé
-// porteStash[idx][key] = état du domino d'origine. Restauré au retrait SI la case est libre.
-let porteStash={};
-function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
+// v60h2 : PORTE_POSITIONS, porteStash et isPorteIdx sont de l'état PAR-SYSTÈME →
+// déplacés DANS la factory (chaque système a ses propres portes). Voir début createSystem.
 
 // Motifs ARTY symétriques, centrés sur la rangée des PORTES (row4).
 // Toutes les pièces en portrait (rot 0) : le portrait n'expose d'icône qu'en haut/bas,
@@ -747,6 +775,8 @@ const DEMOS_BACK=[ BACK_1, BACK_2, BACK_3, BACK_4 ];
 // ─── Objectifs : bac à sable de démonstration sur chaque plateau ───
 const TARGET_BY_BOARD=[0,0,0,0];
 const GOAL_BY_BOARD=[null,null,null,null];
+// v60h : mod() est un helper pur (dépend seulement de NBOARDS, global) → partagé hors factory.
+function mod(n){ return ((n%NBOARDS)+NBOARDS)%NBOARDS; }
 function goalFor(boardIdx){ return GOAL_BY_BOARD[mod(boardIdx)]||null; }
 function targetFor(boardIdx){ const v=TARGET_BY_BOARD[mod(boardIdx)]; return v!=null?v:1; }
 const LANDING_IDX=10;
@@ -754,18 +784,25 @@ const DEMOTE_BY_BOARD=[0,0,0,0];
 function demoteFor(boardIdx){ const v=DEMOTE_BY_BOARD[mod(boardIdx)]; return v!=null?v:0; }
 function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
-// v60e : racine du système courant + helper de recherche SCOPÉ.
-// Tant qu'il n'y a qu'un seul #sysA, $('c') === getElementById('c') (iso-visuel).
-// Quand on aura deux systèmes, chaque instance cherchera dans SA racine.
-const SYS_ROOT = document.getElementById('sysA');
+// v60h : FACTORY — tout le système (état, 3D, UI, écouteurs) vit dans cette fonction.
+// Chaque appel crée une instance indépendante liée à son conteneur `root`.
+// Reste DEHORS (partagé) : constantes, textures, VW/VH (helpers purs).
+function createSystem(root){
+const SYS_ROOT = root;
 function $(id){ return SYS_ROOT.querySelector('#'+id); }
 
 const canvas=$('c');
-// v59 : dimensions LOGIQUES (écran tourné -90° en paysage).
-function VW(){ return window.innerHeight; }
-function VH(){ return window.innerWidth;  }
+// v60h2 : état PAR-SYSTÈME des portes (rapatrié dans la factory).
+let currentLayer=0;                     // 0 = avant, 1 = arrière (par-système)
+let PORTE_POSITIONS=[];                 // portes choisies par le joueur (max MAX_PORTES)
+let porteStash={};                      // tiroir de sauvegarde des dominos écrasés par une porte
+function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
+// v60j : dimensions LOGIQUES basées sur le CANVAS DU SYSTÈME (demi-écran), pas le window.
+// Canvas tourné -90° → largeur logique = hauteur physique du canvas, et inversement.
+function VW(){ return canvas.clientHeight || Math.round(window.innerHeight); }
+function VH(){ return canvas.clientWidth  || Math.round(window.innerWidth/2); }
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-renderer.setSize(VW(),VH()); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
+renderer.setSize(VW(),VH(),false); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(42,VW()/VH(),0.1,200); scene.add(new THREE.AmbientLight(0xffffff,0.95));
 
@@ -1058,7 +1095,7 @@ function doUndo(){
   restoreState(snap);
   showToast('Annulé');
 }
-function updateUndoBtn(){ const b=document.getElementById('undoBtn'); if(b)b.disabled=history.length===0; }
+function updateUndoBtn(){ const b=$('undoBtn'); if(b)b.disabled=history.length===0; }
 
 function getTipDir(p){ const rot=(((p.rotation||0)%360)+360)%360;
   if(rot===0)return{dc:0,dr:-1}; if(rot===90)return{dc:1,dr:0}; if(rot===180)return{dc:0,dr:1}; if(rot===270)return{dc:-1,dr:0}; return{dc:0,dr:-1}; }
@@ -1072,7 +1109,7 @@ function placePiece(p){ if(!p||!p.mesh)return;
   if(p.mesh.userData.porteEdge) p.mesh.userData.porteEdge.visible=isPorteIdx(i);
   refreshTex(p);
 }
-function mod(n){ return ((n%NBOARDS)+NBOARDS)%NBOARDS; }
+// v60h : mod() déplacé hors factory (helper partagé) — voir près des constantes.
 
 // v8 : CUBE. Toutes les faces existent en permanence dans l'espace ; orienter cubeGroup pour
 // que la face courante regarde la caméra. Angle cible = -currentBoard*(2π/n) (on tourne le cube
@@ -1166,7 +1203,7 @@ function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>{
   }); updateGoalTag(); }
 // Pastille "COMMANDE" : visible uniquement sur un plan à objectif-pièce.
 function updateGoalTag(){
-  const el=document.getElementById('goalTag'); const g=goalFor(mod(currentBoard));
+  const el=$('goalTag'); const g=goalFor(mod(currentBoard));
   if(!g){ el.style.display='none'; return; }
   const c=STC[g.state]||STC.white;
   el.style.display='flex'; el.style.borderColor=c.border;
@@ -1175,7 +1212,7 @@ function updateGoalTag(){
     ';stroke-width:4;stroke-linecap:round;stroke-linejoin:round;fill:none}</style>'+
     renderIcoSVG(g.icon,false).replace('class="i"','class="gi"')+'</svg>';
 }
-function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1200); }
+function showToast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1200); }
 
 // ─── FACES EXPOSÉES (porté du V4) ───
 // Selon la rotation, chaque domino expose face1/face2 sur top/bottom/left/right.
@@ -1560,19 +1597,19 @@ function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){ doUndo(); e.preventDefault(); return; }
   if(e.key==='ArrowRight'){navRight();e.preventDefault();} else if(e.key==='ArrowLeft'){navLeft();e.preventDefault();} });
-document.getElementById('undoBtn').addEventListener('click',doUndo);
-document.getElementById('medBtn').classList.toggle('off',!showMedians);  // état initial cohérent (off par défaut)
-document.getElementById('medBtn').addEventListener('click',function(){
+$('undoBtn').addEventListener('click',doUndo);
+$('medBtn').classList.toggle('off',!showMedians);  // état initial cohérent (off par défaut)
+$('medBtn').addEventListener('click',function(){
   showMedians=!showMedians;
   this.classList.toggle('off',!showMedians);
   for(const k in _texCache)delete _texCache[k];   // purge : la clé inclut l'état médiane
   boards.forEach(arr=>arr.forEach(p=>{ if(p)refreshTex(p); }));
 });
 updateUndoBtn();
-const dotsEl=document.getElementById('navDots');
+const dotsEl=$('navDots');
 for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>{ if(i!==mod(currentBoard)&&!busy&&!isAnimating){ if(mod(i-currentBoard)===NBOARDS-1)navLeft(); else navRight(); } }); dotsEl.appendChild(d); }
 // SWIPE sur la BARRE entière (v34 : cible élargie, chevrons inclus) = changer de plateau.
-const navBarEl=document.getElementById('navBar');
+const navBarEl=$('navBar');
 let dotDownX=null, dotMoved=false;
 navBarEl.addEventListener('pointerdown',e=>{ dotDownX=e.clientX; dotMoved=false; navBarEl.setPointerCapture(e.pointerId); });
 navBarEl.addEventListener('pointermove',e=>{ if(dotDownX==null)return; if(Math.abs(e.clientX-dotDownX)>20){ dotMoved=true; } });
@@ -2199,14 +2236,14 @@ const clock=new THREE.Clock(); let last=0, tScaled=0;
 // MODE RALENTI (debug 3D/zoom) : TS multiplie le dt des ticks ET les coeffs de lissage
 // caméra/slerp (constants par frame). 1 = vitesse normale, 0.05 = très lent.
 let TS=1;
-(function(){ const sl=document.getElementById('tsSlider'), lab=document.getElementById('tsLabel');
+(function(){ const sl=$('tsSlider'), lab=$('tsLabel');
   if(!sl)return; const upd=()=>{ TS=Math.max(0.05,sl.value/100); lab.textContent=TS.toFixed(2)+'×'; };
   sl.addEventListener('input',upd); upd();
 })();
 // Cadre la pile pour qu'elle tienne à l'écran quel que soit le format (portrait mobile inclus).
 function fitCamera(){
   const w=VW(), h=VH(), aspect=w/h;
-  renderer.setSize(w,h); camera.aspect=aspect;
+  renderer.setSize(w,h,false); camera.aspect=aspect;
   const vFOV=camera.fov*Math.PI/180;
   // Comme prisme V11 : la grille occupe le maximum de largeur en ne laissant qu'un petit
   // interstice de chaque côté (~10px). On cadre en PRIORITÉ sur la largeur.
@@ -2279,9 +2316,11 @@ window.addEventListener('resize',fitCamera);
 //  À ce stade il n'y a qu'UN système → rendu strictement identique à la v5.
 //  Le 2e système (createSystem) viendra brancher sur cette même indirection.
 const SYS = {
+  root:   SYS_ROOT, // v60f : conteneur DOM du système (#sysA)
+  canvas,           // v60f : canvas WebGL de ce système
   scene,            // THREE.Scene
   camera,           // THREE.PerspectiveCamera
-  renderer,         // partagé (un seul contexte WebGL)
+  renderer,         // un contexte WebGL par système (à terme)
   // viewport logique du système dans le canvas (plein écran pour l'instant).
   vp:{ x:0, y:0, w:1, h:1 },
   render(){
@@ -2415,6 +2454,13 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
 buildBoards(); assignFaces(); updateUI(); animate();
 // v28 : check au démarrage pour détecter les twins déjà présents dans le board initial
 setTimeout(checkFusions, 300);
+
+return SYS;
+} // ── fin createSystem ──────────────────────────────────────────────────────
+
+// v60j : DEUX systèmes côte à côte. Chacun lié à son demi-écran (#sysA gauche, #sysB droite).
+const sysA = createSystem(document.getElementById('sysA'));
+const sysB = createSystem(document.getElementById('sysB'));
 </script>
 </body>
 </html>
