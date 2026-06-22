@@ -2274,6 +2274,12 @@ function fitCamera(){
 // (plateaux allégés), plus on s'approche. Lissé dans animate (comme targetCamZ de K5).
 let baseFitZ=CAM_Z, baseFitY=0, baseWorldPerPx=0.02, vFOVcache=42*Math.PI/180;
 let targetCamZ=CAM_Z, targetCamY=0, targetCamX=-PIVOT_X;
+// v60l : COORDINATION INTER-SYSTÈMES. refreshZoom publie ici l'échelle "solo" et l'emprise
+// brute de CE système ; la coordination (dans animate) lit l'autre système via SYSTEMS et
+// pose coordZ (échelle commune) + coordYShift (recentrage horizontal physique vers le centre).
+let zoomSoloZ=CAM_Z;          // échelle que ce système voudrait seul
+let coordZ=null;              // échelle commune imposée (null = pas encore coordonné)
+let coordYShift=0;            // décalage horizontal-écran (axe Y logique) vers la médiane
 // v37 : refreshZoom(boardIdx) calcule la cible de zoom pour un plateau donné (par défaut le
 // courant). Appelé avec le plateau d'ARRIVÉE au lancement de la nav → le zoom vise déjà la
 // bonne échelle pendant la rotation : un seul geste continu, plus de "deux temps".
@@ -2297,10 +2303,11 @@ function refreshZoom(boardIdx){
   // On ne descend donc pas sous needZh ; et jamais sous 0.45*baseFitZ (confort iPhone).
   const zMin=Math.max(baseFitZ*0.45, needZh);
   const z=Math.min(baseFitZ, Math.max(zMin, Math.max(needZw,needZh)));
-  targetCamZ=z;
+  zoomSoloZ=z;                                 // v60l : échelle voulue par CE système seul
+  targetCamZ=(coordZ!=null)?coordZ:z;          // v60l : si coordonné, on suit l'échelle commune
   // recentre verticalement sur le barycentre du contenu, en conservant le shift bande utile.
   const cY=(minY+maxY)/2;
-  targetCamY=baseFitY + cY*0.6;
+  targetCamY=baseFitY + cY*0.6 + coordYShift;  // v60l : + décalage de rapprochement central
   // v41 : recentre AUSSI en X sur l'emprise réelle des colonnes occupées (cas <5 col décalées).
   // Le contenu de la face est décalé de -PIVOT_X → le barycentre écran est (cX - PIVOT_X).
   const cX=(minX+maxX)/2;
@@ -2338,7 +2345,17 @@ const SYS = {
     boards.forEach(arr=>arr.forEach(p=>{ if(p)refreshTex(p); }));
   },
   refreshUndoBtn(){ updateUndoBtn(); },
-  get histLen(){ return history.length; }
+  get histLen(){ return history.length; },
+  // v60l : COORDINATION — l'échelle solo voulue par ce système, et le setter commun.
+  get soloZ(){ return zoomSoloZ; },
+  setCoord(z, yShift){
+    // idempotent : ne recalcule que si l'échelle commune ou le décalage a réellement changé,
+    // pour ne PAS relancer refreshZoom (parcours de tous les boards) à chaque frame.
+    if(coordZ===z && coordYShift===yShift) return;
+    coordZ=z; coordYShift=yShift;
+    targetCamZ=z;    // la cloche de rotation gère le transitoire ; ici on cale la cible.
+    refreshZoom();   // recalcule targetCamY avec le nouveau coordYShift + targetCamZ commun
+  }
 };
 function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const dtRaw=t-last; last=t; const dt=dtRaw*TS; tScaled+=dt;
   if(isAnimating){
@@ -2470,6 +2487,22 @@ return SYS;
 const sysA = createSystem(document.getElementById('sysA'));
 const sysB = createSystem(document.getElementById('sysB'));
 const SYSTEMS = [sysA, sysB];
+
+// v60l : COORDINATION DES DEUX SYSTÈMES — échelle commune + rapprochement vers le centre.
+//  • Échelle commune : on prend la plus large emprise (max des Z solo) pour que rien ne sorte
+//    d'aucun des deux demi-écrans, puis on l'impose aux deux → même taille de cellule.
+//  • Rapprochement : chaque système est décalé vers la médiane centrale. Le canvas est tourné
+//    -90°, donc l'axe HORIZONTAL écran = l'axe Y logique de la caméra. sysA (gauche) pousse vers
+//    +Y, sysB (droite) vers -Y (signes opposés). NUDGE règle l'intensité du rapprochement.
+const NUDGE = 0.9;   // ampleur du rapprochement central (unités monde). ↑ = plus proche.
+(function coordinate(){
+  requestAnimationFrame(coordinate);
+  const zA=sysA.soloZ, zB=sysB.soloZ;
+  if(!isFinite(zA)||!isFinite(zB))return;
+  const zCommon=Math.max(zA,zB);            // la plus "reculée" → tout rentre des deux côtés
+  sysA.setCoord(zCommon, +NUDGE);           // gauche → pousse son contenu vers la médiane
+  sysB.setCoord(zCommon, -NUDGE);           // droite → pousse son contenu vers la médiane
+})();
 
 // v60k : BARRE DE CONTRÔLES COMMUNE — pilote les deux systèmes.
 (function(){
