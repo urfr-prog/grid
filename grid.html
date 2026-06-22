@@ -393,8 +393,9 @@
      position:absolute (relatifs au .sys) au lieu de fixed (viewport). */
   #stage { position:fixed; inset:0; display:flex; }
   .sys { position:relative; flex:1 1 50%; height:100%; overflow:hidden; }
-  /* canvas : remplit SON demi-écran, rotation -90° calée sur le centre du demi-écran. */
-  .sys #c { position:absolute; top:50%; left:50%; width:100%; height:100%;
+  /* canvas : dimensions SWAPPÉES (w=hauteur du .sys, h=largeur du .sys) pour qu'après
+     rotation -90° il remplisse exactement le demi-écran sans déformation. */
+  .sys #c { position:absolute; top:50%; left:50%; width:100vh; height:50vw;
             transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center center; }
   /* UI scopée au demi-écran : ce qui était fixed/left:50% devient absolute dans le .sys */
   .sys .nav-bar,
@@ -403,6 +404,14 @@
   .sys .undo-btn,
   .sys .opt-btn,
   .sys #slowmo { position:absolute; }
+  /* v60k : barre de contrôles COMMUNE (slider + médianes + undo), centrée en bas. */
+  #commonBar { position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 18px); z-index:400;
+    display:flex; align-items:center; gap:12px; }
+  #commonBar .opt-btn, #commonBar .undo-btn { position:relative; bottom:auto; right:auto; }
+  #slowmoG { display:flex; align-items:center; gap:9px; padding:7px 13px; border-radius:18px;
+    background:rgba(22,23,38,0.78); backdrop-filter:blur(6px); font:12px system-ui,sans-serif;
+    color:rgba(180,200,220,0.9); }
 </style>
 </head>
 <body>
@@ -412,29 +421,25 @@
   <div id="sysA" class="sys">
   <canvas id="c"></canvas>
   <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
-  <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
-  <button id="medBtn" class="opt-btn" aria-label="Médianes">▤</button>
-  <div id="slowmo" style="left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);z-index:200;display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:18px;background:rgba(22,23,38,0.78);backdrop-filter:blur(6px);font:12px system-ui,sans-serif;color:rgba(180,200,220,0.9);">
-    <span style="opacity:0.7;">🐢</span>
-    <input id="tsSlider" type="range" min="5" max="150" value="100" style="width:120px;accent-color:#22d3ee;">
-    <span id="tsLabel" style="min-width:34px;text-align:right;font-variant-numeric:tabular-nums;">1.00×</span>
-  </div>
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
   </div><!-- /#sysA -->
   <div id="sysB" class="sys">
   <canvas id="c"></canvas>
   <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
-  <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
-  <button id="medBtn" class="opt-btn" aria-label="Médianes">▤</button>
-  <div id="slowmo" style="left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);z-index:200;display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:18px;background:rgba(22,23,38,0.78);backdrop-filter:blur(6px);font:12px system-ui,sans-serif;color:rgba(180,200,220,0.9);">
-    <span style="opacity:0.7;">🐢</span>
-    <input id="tsSlider" type="range" min="5" max="150" value="100" style="width:120px;accent-color:#22d3ee;">
-    <span id="tsLabel" style="min-width:34px;text-align:right;font-variant-numeric:tabular-nums;">1.00×</span>
-  </div>
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
   </div><!-- /#sysB -->
+  <!-- v60k : BARRE DE CONTRÔLES COMMUNE (centrée en bas, chevauche les deux moitiés). -->
+  <div id="commonBar">
+    <button id="medBtnG" class="opt-btn" aria-label="Médianes">▤</button>
+    <div id="slowmoG">
+      <span style="opacity:0.7;">🐢</span>
+      <input id="tsSliderG" type="range" min="5" max="150" value="100" style="width:120px;accent-color:#22d3ee;">
+      <span id="tsLabelG" style="min-width:34px;text-align:right;font-variant-numeric:tabular-nums;">1.00×</span>
+    </div>
+    <button id="undoBtnG" class="undo-btn" aria-label="Annuler">↶</button>
+  </div>
   </div><!-- /#stage -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -784,6 +789,8 @@ const DEMOTE_BY_BOARD=[0,0,0,0];
 function demoteFor(boardIdx){ const v=DEMOTE_BY_BOARD[mod(boardIdx)]; return v!=null?v:0; }
 function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
+// v60k : TS (vitesse) est GLOBAL — partagé par les deux systèmes, piloté par le slider commun.
+let TS=1;
 // v60h : FACTORY — tout le système (état, 3D, UI, écouteurs) vit dans cette fonction.
 // Chaque appel crée une instance indépendante liée à son conteneur `root`.
 // Reste DEHORS (partagé) : constantes, textures, VW/VH (helpers purs).
@@ -797,10 +804,11 @@ let currentLayer=0;                     // 0 = avant, 1 = arrière (par-système
 let PORTE_POSITIONS=[];                 // portes choisies par le joueur (max MAX_PORTES)
 let porteStash={};                      // tiroir de sauvegarde des dominos écrasés par une porte
 function isPorteIdx(i){ return PORTE_POSITIONS.includes(i); }
-// v60j : dimensions LOGIQUES basées sur le CANVAS DU SYSTÈME (demi-écran), pas le window.
-// Canvas tourné -90° → largeur logique = hauteur physique du canvas, et inversement.
-function VW(){ return canvas.clientHeight || Math.round(window.innerHeight); }
-function VH(){ return canvas.clientWidth  || Math.round(window.innerWidth/2); }
+// v60j2 : dimensions LOGIQUES basées sur le CONTENEUR .sys (non tourné), avec swap -90°.
+// Le .sys fait (demi-largeur × pleine-hauteur). Canvas tourné -90° → largeur logique du jeu
+// = hauteur du .sys ; hauteur logique = largeur du .sys. Buffer et affichage coïncident ainsi.
+function VW(){ return Math.round(SYS_ROOT.clientHeight) || Math.round(window.innerHeight); }
+function VH(){ return Math.round(SYS_ROOT.clientWidth)  || Math.round(window.innerWidth/2); }
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setSize(VW(),VH(),false); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
 const scene=new THREE.Scene();
@@ -1597,14 +1605,7 @@ function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){ doUndo(); e.preventDefault(); return; }
   if(e.key==='ArrowRight'){navRight();e.preventDefault();} else if(e.key==='ArrowLeft'){navLeft();e.preventDefault();} });
-$('undoBtn').addEventListener('click',doUndo);
-$('medBtn').classList.toggle('off',!showMedians);  // état initial cohérent (off par défaut)
-$('medBtn').addEventListener('click',function(){
-  showMedians=!showMedians;
-  this.classList.toggle('off',!showMedians);
-  for(const k in _texCache)delete _texCache[k];   // purge : la clé inclut l'état médiane
-  boards.forEach(arr=>arr.forEach(p=>{ if(p)refreshTex(p); }));
-});
+// v60k : câblage undo/médianes retiré de la factory → géré par la barre de contrôles COMMUNE.
 updateUndoBtn();
 const dotsEl=$('navDots');
 for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>{ if(i!==mod(currentBoard)&&!busy&&!isAnimating){ if(mod(i-currentBoard)===NBOARDS-1)navLeft(); else navRight(); } }); dotsEl.appendChild(d); }
@@ -2235,11 +2236,9 @@ function flashFusion(p){ if(!p.mesh)return; const g=p.mesh.userData.glow;
 const clock=new THREE.Clock(); let last=0, tScaled=0;
 // MODE RALENTI (debug 3D/zoom) : TS multiplie le dt des ticks ET les coeffs de lissage
 // caméra/slerp (constants par frame). 1 = vitesse normale, 0.05 = très lent.
-let TS=1;
-(function(){ const sl=$('tsSlider'), lab=$('tsLabel');
-  if(!sl)return; const upd=()=>{ TS=Math.max(0.05,sl.value/100); lab.textContent=TS.toFixed(2)+'×'; };
-  sl.addEventListener('input',upd); upd();
-})();
+// v60k : TS est GLOBAL (vitesse commune aux deux systèmes) — déclaré hors factory.
+// v60k : le slider interne est retiré → remplacé par la barre de contrôles COMMUNE.
+
 // Cadre la pile pour qu'elle tienne à l'écran quel que soit le format (portrait mobile inclus).
 function fitCamera(){
   const w=VW(), h=VH(), aspect=w/h;
@@ -2330,7 +2329,16 @@ const SYS = {
     const pw=Math.round(this.vp.w*W), ph=Math.round(this.vp.h*H);
     this.renderer.setViewport(px,py,pw,ph);
     this.renderer.render(this.scene,this.camera);
-  }
+  },
+  // v60k : actions exposées pour les CONTRÔLES COMMUNS (barre unique).
+  undo(){ doUndo(); },
+  setMedians(on){
+    showMedians=on;
+    for(const k in _texCache)delete _texCache[k];        // purge : la clé inclut l'état médiane
+    boards.forEach(arr=>arr.forEach(p=>{ if(p)refreshTex(p); }));
+  },
+  refreshUndoBtn(){ updateUndoBtn(); },
+  get histLen(){ return history.length; }
 };
 function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const dtRaw=t-last; last=t; const dt=dtRaw*TS; tScaled+=dt;
   if(isAnimating){
@@ -2461,6 +2469,27 @@ return SYS;
 // v60j : DEUX systèmes côte à côte. Chacun lié à son demi-écran (#sysA gauche, #sysB droite).
 const sysA = createSystem(document.getElementById('sysA'));
 const sysB = createSystem(document.getElementById('sysB'));
+const SYSTEMS = [sysA, sysB];
+
+// v60k : BARRE DE CONTRÔLES COMMUNE — pilote les deux systèmes.
+(function(){
+  // — vitesse commune (TS global) —
+  const sl=document.getElementById('tsSliderG'), lab=document.getElementById('tsLabelG');
+  const updSpeed=()=>{ TS=Math.max(0.05, sl.value/100); lab.textContent=TS.toFixed(2)+'×'; };
+  sl.addEventListener('input',updSpeed); updSpeed();
+
+  // — médianes communes (on/off sur les deux) —
+  let medOn=false;
+  const med=document.getElementById('medBtnG');
+  med.classList.toggle('off',!medOn);
+  med.addEventListener('click',()=>{
+    medOn=!medOn; med.classList.toggle('off',!medOn);
+    SYSTEMS.forEach(s=>s.setMedians(medOn));
+  });
+
+  // — undo : branché à la sous-étape suivante (historique global) —
+})();
+
 </script>
 </body>
 </html>
