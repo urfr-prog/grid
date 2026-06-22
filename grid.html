@@ -338,8 +338,9 @@
     overflow:hidden; user-select:none;
   }
   /* v59 : redressement paysage (écran iPhone couché). */
-  /* v60c : dérotation — canvas plein écran normal (0°). Paysage obtenu nativement. */
-  #c { position:fixed; top:0; left:0; width:100vw; height:100vh; display:block; touch-action:none; cursor:default; }
+  #c { position:fixed; top:50%; left:50%; width:100vh; height:100vw;
+       transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center center;
+       display:block; touch-action:none; cursor:default; }
   .info-bar { display:flex; gap:16px; margin-top:10px; font-size:0.65rem; color:rgba(180,180,200,0.5); letter-spacing:0.1em; }
   .info-bar span { color:rgba(220,220,235,0.8); }
   /* v34 : la nav plateau quitte le bas (zone pouce encombrée) pour une BARRE HAUTE large.
@@ -389,6 +390,9 @@
 </style>
 </head>
 <body>
+  <!-- v60e : tout le système est enveloppé dans #sysA (fondation pour le 2e système).
+       Conteneur neutre : les enfants gardent leur position:fixed → aucun changement visuel. -->
+  <div id="sysA" class="sys">
   <canvas id="c"></canvas>
   <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
   <button id="undoBtn" class="undo-btn" aria-label="Annuler">↶</button>
@@ -400,6 +404,7 @@
   </div>
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
+  </div><!-- /#sysA -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -749,10 +754,16 @@ const DEMOTE_BY_BOARD=[0,0,0,0];
 function demoteFor(boardIdx){ const v=DEMOTE_BY_BOARD[mod(boardIdx)]; return v!=null?v:0; }
 function demoteState(st,n){ let i=STATE_ORDER.indexOf(st||'white'); i=Math.max(0,i-n); return STATE_ORDER[i]; }
 
-const canvas=document.getElementById('c');
-// v60c : repère écran NORMAL (0°). Le renderer remplit l'écran réel.
-function VW(){ return window.innerWidth; }
-function VH(){ return window.innerHeight; }
+// v60e : racine du système courant + helper de recherche SCOPÉ.
+// Tant qu'il n'y a qu'un seul #sysA, $('c') === getElementById('c') (iso-visuel).
+// Quand on aura deux systèmes, chaque instance cherchera dans SA racine.
+const SYS_ROOT = document.getElementById('sysA');
+function $(id){ return SYS_ROOT.querySelector('#'+id); }
+
+const canvas=$('c');
+// v59 : dimensions LOGIQUES (écran tourné -90° en paysage).
+function VW(){ return window.innerHeight; }
+function VH(){ return window.innerWidth;  }
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setSize(VW(),VH()); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
 const scene=new THREE.Scene();
@@ -1373,8 +1384,8 @@ function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus 
 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
-// v60c : mapping écran normal (0°). NDC standard plein écran.
-function setNDC(cx,cy){ mouseV.x=(cx/VW())*2-1; mouseV.y=-(cy/VH())*2+1; }
+// v59 : canvas tourné -90°. clientX/clientY physiques → NDC du repère logique redressé.
+function setNDC(cx,cy){ const lx=cy, ly=VH()-cx; mouseV.x=(lx/VW())*2-1; mouseV.y=-(ly/VH())*2+1; }
 function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
   const meshes=[]; curBoard().forEach(p=>{ if(p&&p.mesh&&p.mesh.visible)p.mesh.traverse(c=>{if(c.isMesh)meshes.push(c);}); });
   for(const h of raycaster.intersectObjects(meshes,false)){ let o=h.object;
@@ -1447,9 +1458,9 @@ function dropPiece(cx,cy){
 }
 
 let downX=0,downY=0,downT=0,moved=false;
-// v60c : deltas de geste en repère écran normal (0°).
-function LX(e){ return e.clientX; }
-function LY(e){ return e.clientY; }
+// v59 : deltas de geste dans le repère redressé (-90°).
+function LX(e){ return e.clientY; }
+function LY(e){ return VH()-e.clientX; }
 let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
 // ─── v50 : BASCULE DE LAYER (swipe vertical 1 doigt depuis le VIDE) ───────────
 //  Réutilise le canal navSwipe (geste armé hors domino). Swipe vertical ample =
