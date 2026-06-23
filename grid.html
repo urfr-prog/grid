@@ -1440,14 +1440,21 @@ function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
 // v59 : canvas tourné -90°. clientX/clientY physiques → NDC du repère logique redressé.
-// v60n2 : FIX split-screen. L'ancienne formule (lx=cy, ly=VH()-cx) supposait le système à
-// l'origine écran. On la garde TELLE QUELLE mais sur des coords relatives au .sys (SYS_ROOT,
-// NON tourné → rect fiable, contrairement au canvas qui subit rotate(-90deg)).
+// v60n3 : géométrie EXACTE. Le canvas est rendu en VW()xVH() (pixels canvas) PUIS tourné
+// de -90° par CSS autour de son centre. Pour retrouver le point dans le repère canvas
+// (celui que three.js connaît), on prend le point relatif au CENTRE du .sys et on applique
+// la rotation INVERSE (+90°). Marche identiquement pour sysA et sysB (chacun son rect).
 function setNDC(cx,cy){
   const r=SYS_ROOT.getBoundingClientRect();
-  const px=cx-r.left, py=cy-r.top;        // coords dans le demi-écran de CE système
-  const lx=py, ly=VH()-px;                // même mapping -90° qu'avant, recalé sur l'origine du sys
-  mouseV.x=(lx/VW())*2-1; mouseV.y=-(ly/VH())*2+1;
+  // point écran relatif au centre du demi-écran
+  const ex=(cx-r.left)-r.width/2;
+  const ey=(cy-r.top)-r.height/2;
+  // rotation inverse +90° : (ex,ey) écran → (canvasX,canvasY) dans le canvas non tourné.
+  // rotate(-90) envoie canvas (X,Y) vers écran ; l'inverse : canvasX = -ey, canvasY = ex.
+  const canvasX = -ey + VW()/2;   // 0..VW()
+  const canvasY =  ex + VH()/2;   // 0..VH()
+  mouseV.x=(canvasX/VW())*2-1;
+  mouseV.y=-((canvasY/VH())*2-1);
 }
 function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
   const meshes=[]; curBoard().forEach(p=>{ if(p&&p.mesh&&p.mesh.visible)p.mesh.traverse(c=>{if(c.isMesh)meshes.push(c);}); });
@@ -1553,7 +1560,7 @@ canvas.addEventListener('pointerdown',e=>{
       +'\ncell='+(cell?('c'+cell.col+' r'+cell.row):'null')
       +'\nPIECE='+(!!hit)+(hit?(' @c'+colOf(curBoard().indexOf(hit))+' r'+rowOf(curBoard().indexOf(hit))):''));
   }
-  window.__lockDBG=Date.now()+1500;  // fige l'affichage 1.5s
+  window.__lockDBG=Date.now()+2500;  // fige l'affichage 2.5s
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
