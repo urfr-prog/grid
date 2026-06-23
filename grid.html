@@ -345,11 +345,14 @@
   .info-bar span { color:rgba(220,220,235,0.8); }
   /* v34 : la nav plateau quitte le bas (zone pouce encombrée) pour une BARRE HAUTE large.
      touch-action:none + grande surface tactile : swipe ‹ › ample, peu d'accidents. */
-  .nav-bar { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 8px); left:50%; transform:translateX(-50%);
-    display:flex; align-items:center; gap:10px; z-index:200; padding:11px 26px; touch-action:none; cursor:grab;
-    background:rgba(12,18,30,0.55); border:0.5px solid rgba(55,138,221,0.22); border-radius:22px; backdrop-filter:blur(5px); }
-  .nav-bar .chev { color:rgba(55,138,221,0.55); font-size:0.95rem; line-height:1; padding:0 2px; user-select:none; }
-  .nav-dots { display:flex; align-items:center; gap:9px; }
+  /* v60m : nav-bar VERTICALE fine, en overlay collé au bord GAUCHE de l'écran.
+     Les deux (sysA, sysB) sont empilées dans la colonne fine gauche (voir overrides .sys). */
+  .nav-bar { position:fixed; left:calc(env(safe-area-inset-left,0px) + 6px);
+    display:flex; flex-direction:column; align-items:center; gap:8px; z-index:200;
+    padding:14px 7px; touch-action:none; cursor:grab;
+    background:rgba(12,18,30,0.55); border:0.5px solid rgba(55,138,221,0.22); border-radius:18px; backdrop-filter:blur(5px); }
+  .nav-bar .chev { color:rgba(55,138,221,0.55); font-size:0.95rem; line-height:1; padding:2px 0; user-select:none; }
+  .nav-dots { display:flex; flex-direction:column; align-items:center; gap:9px; }
   .nav-dot { width:8px; height:8px; border-radius:50%; background:rgba(34,211,238,0.18); transition:all 0.35s; cursor:pointer; }
   .nav-dot.active { background:rgba(34,211,238,0.75); box-shadow:0 0 9px rgba(34,211,238,0.5); }
   .hint { margin-top:6px; font-size:0.5rem; color:rgba(180,180,200,0.3); letter-spacing:0.12em; }
@@ -397,21 +400,27 @@
      rotation -90° il remplisse exactement le demi-écran sans déformation. */
   .sys #c { position:absolute; top:50%; left:50%; width:100vh; height:50vw;
             transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center center; }
-  /* UI scopée au demi-écran : ce qui était fixed/left:50% devient absolute dans le .sys */
-  .sys .nav-bar,
+  /* UI scopée au demi-écran : ce qui était fixed/left:50% devient absolute dans le .sys.
+     v60m : la .nav-bar est EXCLUE ici → elle reste fixed, empilée dans la colonne gauche. */
   .sys .goal-tag,
   .sys .toast,
   .sys .undo-btn,
   .sys .opt-btn,
   .sys #slowmo { position:absolute; }
-  /* v60k : barre de contrôles COMMUNE (slider + médianes + undo), centrée en bas. */
-  #commonBar { position:fixed; left:50%; transform:translateX(-50%);
-    bottom:calc(env(safe-area-inset-bottom,0px) + 18px); z-index:400;
-    display:flex; align-items:center; gap:12px; }
+  /* v60m : les deux nav-bars empilées dans la colonne fine GAUCHE (overlay, hauteurs distinctes). */
+  #sysA .nav-bar { top:calc(env(safe-area-inset-top,0px) + 10px); }
+  #sysB .nav-bar { top:50%; }
+  /* v60m : barre de contrôles COMMUNE → VERTICALE, en bas de la colonne fine gauche. */
+  #commonBar { position:fixed; left:calc(env(safe-area-inset-left,0px) + 6px);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 14px); z-index:400;
+    display:flex; flex-direction:column; align-items:center; gap:10px; }
   #commonBar .opt-btn, #commonBar .undo-btn { position:relative; bottom:auto; right:auto; }
-  #slowmoG { display:flex; align-items:center; gap:9px; padding:7px 13px; border-radius:18px;
-    background:rgba(22,23,38,0.78); backdrop-filter:blur(6px); font:12px system-ui,sans-serif;
+  /* slider de vitesse VERTICAL */
+  #slowmoG { display:flex; flex-direction:column; align-items:center; gap:8px; padding:11px 7px; border-radius:18px;
+    background:rgba(22,23,38,0.78); backdrop-filter:blur(6px); font:11px system-ui,sans-serif;
     color:rgba(180,200,220,0.9); }
+  #slowmoG input[type=range]{ writing-mode:vertical-lr; direction:rtl; width:auto; height:96px; accent-color:#22d3ee; }
+  #tsLabelG { min-width:0 !important; }
 </style>
 </head>
 <body>
@@ -435,8 +444,8 @@
     <button id="medBtnG" class="opt-btn" aria-label="Médianes">▤</button>
     <div id="slowmoG">
       <span style="opacity:0.7;">🐢</span>
-      <input id="tsSliderG" type="range" min="5" max="150" value="100" style="width:120px;accent-color:#22d3ee;">
-      <span id="tsLabelG" style="min-width:34px;text-align:right;font-variant-numeric:tabular-nums;">1.00×</span>
+      <input id="tsSliderG" type="range" min="5" max="150" value="100">
+      <span id="tsLabelG" style="text-align:center;font-variant-numeric:tabular-nums;">1.00×</span>
     </div>
     <button id="undoBtnG" class="undo-btn" aria-label="Annuler">↶</button>
   </div>
