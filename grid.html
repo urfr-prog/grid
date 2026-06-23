@@ -407,14 +407,15 @@
   .sys .undo-btn,
   .sys .opt-btn,
   .sys #slowmo { position:absolute; }
-  /* v60m : les deux nav-bars empilées dans la colonne fine GAUCHE (overlay, hauteurs distinctes). */
+  /* v60m : les deux nav-bars empilées en haut de la colonne fine GAUCHE (overlay). */
   #sysA .nav-bar { top:calc(env(safe-area-inset-top,0px) + 10px); }
-  #sysB .nav-bar { top:50%; }
+  #sysB .nav-bar { top:calc(env(safe-area-inset-top,0px) + 168px); }
   /* v60m : barre de contrôles COMMUNE → VERTICALE, en bas de la colonne fine gauche. */
   #commonBar { position:fixed; left:calc(env(safe-area-inset-left,0px) + 6px);
     bottom:calc(env(safe-area-inset-bottom,0px) + 14px); z-index:400;
-    display:flex; flex-direction:column; align-items:center; gap:10px; }
-  #commonBar .opt-btn, #commonBar .undo-btn { position:relative; bottom:auto; right:auto; }
+    display:flex; flex-direction:column; align-items:center; gap:12px; }
+  /* dans la barre commune, les boutons reprennent un flux vertical normal (plus de fixed). */
+  #commonBar .opt-btn, #commonBar .undo-btn { position:relative; top:auto; bottom:auto; left:auto; right:auto; }
   /* slider de vitesse VERTICAL */
   #slowmoG { display:flex; flex-direction:column; align-items:center; gap:8px; padding:11px 7px; border-radius:18px;
     background:rgba(22,23,38,0.78); backdrop-filter:blur(6px); font:11px system-ui,sans-serif;
@@ -2503,7 +2504,7 @@ const SYSTEMS = [sysA, sysB];
 //  • Rapprochement : chaque système est décalé vers la médiane centrale. Le canvas est tourné
 //    -90°, donc l'axe HORIZONTAL écran = l'axe Y logique de la caméra. sysA (gauche) pousse vers
 //    +Y, sysB (droite) vers -Y (signes opposés). NUDGE règle l'intensité du rapprochement.
-const NUDGE = 0.9;   // ampleur du rapprochement central (unités monde). ↑ = plus proche.
+const NUDGE = 0.25;  // v60m : réduit (0.9 provoquait le recouvrement central). ↑ rapproche, ↓ écarte.
 (function coordinate(){
   requestAnimationFrame(coordinate);
   const zA=sysA.soloZ, zB=sysB.soloZ;
@@ -2529,7 +2530,13 @@ const NUDGE = 0.9;   // ampleur du rapprochement central (unités monde). ↑ = 
     SYSTEMS.forEach(s=>s.setMedians(medOn));
   });
 
-  // — undo : branché à la sous-étape suivante (historique global) —
+  // — undo COMMUN : défait le dernier coup du système ayant l'historique le plus fourni. —
+  const undoBtn=document.getElementById('undoBtnG');
+  const pickSys=()=> (sysB.histLen>sysA.histLen) ? sysB : sysA;
+  const refreshUndo=()=>{ undoBtn.disabled = (sysA.histLen+sysB.histLen)===0; };
+  undoBtn.addEventListener('click',()=>{ const s=pickSys(); if(s.histLen>0){ s.undo(); s.refreshUndoBtn(); refreshUndo(); } });
+  refreshUndo();
+  setInterval(refreshUndo,400);   // garde l'état actif/désactivé à jour après chaque coup
 })();
 
 </script>
