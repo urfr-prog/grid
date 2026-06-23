@@ -1542,6 +1542,10 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
   showToast(currentLayer===0?'Plan avant':'Plan arrière');
 }
 canvas.addEventListener('pointerdown',e=>{
+  // DEBUG
+  let dbg=document.getElementById('DBG'); if(!dbg){ dbg=document.createElement('div'); dbg.id='DBG'; dbg.style.cssText='position:fixed;top:4px;right:4px;z-index:9999;background:#000a;color:#0f0;font:11px monospace;padding:6px;white-space:pre;pointer-events:none;max-width:46vw'; document.body.appendChild(dbg); }
+  window.__DBG=(t)=>{ document.getElementById('DBG').textContent=t; };
+  __DBG('down sys='+SYS_ROOT.id+' pieceAt='+(!!pieceAt(e.clientX,e.clientY)));
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
@@ -1567,6 +1571,7 @@ canvas.addEventListener('pointerdown',e=>{
   }
 });
 canvas.addEventListener('pointermove',e=>{
+  if(window.__DBG) __DBG('move sys='+SYS_ROOT.id+' dragging='+dragging+' dx='+(dragging?Math.round(LX(e)-downX):'-')+' dy='+(dragging?Math.round(LY(e)-downY):'-')+' axis='+dragAxis);
   if(!dragging)return;
   const dx=LX(e)-downX, dy=LY(e)-downY;
   if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
