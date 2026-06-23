@@ -1440,17 +1440,13 @@ function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
 // v59 : canvas tourné -90°. clientX/clientY physiques → NDC du repère logique redressé.
-// v60n : FIX split-screen — on passe par le rect RÉEL du canvas (relatif à SON système),
-// sinon le picking de sysB (décalé à droite) vise à côté et aucun domino n'est saisi.
+// v60n2 : FIX split-screen. L'ancienne formule (lx=cy, ly=VH()-cx) supposait le système à
+// l'origine écran. On la garde TELLE QUELLE mais sur des coords relatives au .sys (SYS_ROOT,
+// NON tourné → rect fiable, contrairement au canvas qui subit rotate(-90deg)).
 function setNDC(cx,cy){
-  const r=canvas.getBoundingClientRect();
-  // position dans le rect affiché du canvas (déjà tourné -90° à l'écran), normalisée 0..1
-  const u=(cx-r.left)/r.width;     // 0 (bord gauche écran du canvas) → 1 (bord droit)
-  const v=(cy-r.top)/r.height;     // 0 (haut) → 1 (bas)
-  // le canvas subit rotate(-90°) : son axe logique X (largeur VW) est vertical à l'écran,
-  // son axe logique Y (hauteur VH) est horizontal. On retrouve le repère logique :
-  const lx=v*VW();                 // vertical écran → X logique
-  const ly=(1-u)*VH();             // horizontal écran (inversé par la rotation) → Y logique
+  const r=SYS_ROOT.getBoundingClientRect();
+  const px=cx-r.left, py=cy-r.top;        // coords dans le demi-écran de CE système
+  const lx=py, ly=VH()-px;                // même mapping -90° qu'avant, recalé sur l'origine du sys
   mouseV.x=(lx/VW())*2-1; mouseV.y=-(ly/VH())*2+1;
 }
 function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
@@ -1526,9 +1522,9 @@ function dropPiece(cx,cy){
 
 let downX=0,downY=0,downT=0,moved=false;
 // v59 : deltas de geste dans le repère redressé (-90°).
-// v60n : relatifs au rect du canvas (comme setNDC) pour que sysB réagisse correctement.
-function LX(e){ const r=canvas.getBoundingClientRect(); return ((e.clientY-r.top)/r.height)*VW(); }
-function LY(e){ const r=canvas.getBoundingClientRect(); return (1-(e.clientX-r.left)/r.width)*VH(); }
+// v60n2 : recalés sur le .sys (SYS_ROOT non tourné) → cohérent pour sysA ET sysB.
+function LX(e){ const r=SYS_ROOT.getBoundingClientRect(); return e.clientY-r.top; }
+function LY(e){ const r=SYS_ROOT.getBoundingClientRect(); return VH()-(e.clientX-r.left); }
 let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
 // ─── v50 : BASCULE DE LAYER (swipe vertical 1 doigt depuis le VIDE) ───────────
 //  Réutilise le canal navSwipe (geste armé hors domino). Swipe vertical ample =
