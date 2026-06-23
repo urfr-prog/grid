@@ -1547,11 +1547,12 @@ canvas.addEventListener('pointerdown',e=>{
   window.__DBG=(t)=>{ document.getElementById('DBG').textContent=t; };
   { const r=SYS_ROOT.getBoundingClientRect();
     const hit=pieceAt(e.clientX,e.clientY);
+    const cell=cellAt(e.clientX,e.clientY);
     __DBG('DOWN '+SYS_ROOT.id+'\nclient='+Math.round(e.clientX)+','+Math.round(e.clientY)
-      +'\nsysRect L='+Math.round(r.left)+' T='+Math.round(r.top)+' W='+Math.round(r.width)+' H='+Math.round(r.height)
-      +'\nVW='+VW()+' VH='+VH()
       +'\nndc='+mouseV.x.toFixed(2)+','+mouseV.y.toFixed(2)
-      +'\nPIECE='+(!!hit)); }
+      +'\ncell='+(cell?('c'+cell.col+' r'+cell.row):'null')
+      +'\nPIECE='+(!!hit)+(hit?(' @c'+colOf(curBoard().indexOf(hit))+' r'+rowOf(curBoard().indexOf(hit))):''));
+  }
   window.__lockDBG=Date.now()+1500;  // fige l'affichage 1.5s
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
