@@ -1549,6 +1549,15 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
   showToast(currentLayer===0?'Plan avant':'Plan arrière');
 }
 canvas.addEventListener('pointerdown',e=>{
+  // ===== DIAG events bruts =====
+  if(!window.__EV){ window.__EV={}; const d=document.createElement('div'); d.id='EVLOG'; d.style.cssText='position:fixed;top:4px;left:50%;transform:translateX(-50%);z-index:99999;background:#000d;color:#0f0;font:13px monospace;padding:8px;white-space:pre;pointer-events:none;text-align:center'; document.body.appendChild(d);
+    const log=()=>{ d.textContent=Object.entries(window.__EV).map(([k,v])=>k+':'+v).join('  '); };
+    ['pointerdown','pointermove','pointerup','pointercancel','touchstart','touchmove','touchend','touchcancel'].forEach(t=>{
+      document.addEventListener(t,()=>{ window.__EV[t]=(window.__EV[t]||0)+1; log(); }, {passive:true, capture:true});
+    });
+    window.__EV.lastTarget=''; canvas.addEventListener('pointerdown',ev=>{ d.textContent+=' | tgt='+(ev.target.id||ev.target.tagName); },true);
+  }
+  // ===== /DIAG =====
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
