@@ -1549,15 +1549,18 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
   showToast(currentLayer===0?'Plan avant':'Plan arrière');
 }
 canvas.addEventListener('pointerdown',e=>{
-  // ===== DIAG events bruts =====
-  if(!window.__EV){ window.__EV={}; const d=document.createElement('div'); d.id='EVLOG'; d.style.cssText='position:fixed;top:4px;left:50%;transform:translateX(-50%);z-index:99999;background:#000d;color:#0f0;font:13px monospace;padding:8px;white-space:pre;pointer-events:none;text-align:center'; document.body.appendChild(d);
-    const log=()=>{ d.textContent=Object.entries(window.__EV).map(([k,v])=>k+':'+v).join('  '); };
-    ['pointerdown','pointermove','pointerup','pointercancel','touchstart','touchmove','touchend','touchcancel'].forEach(t=>{
-      document.addEventListener(t,()=>{ window.__EV[t]=(window.__EV[t]||0)+1; log(); }, {passive:true, capture:true});
-    });
-    window.__EV.lastTarget=''; canvas.addEventListener('pointerdown',ev=>{ d.textContent+=' | tgt='+(ev.target.id||ev.target.tagName); },true);
-  }
-  // ===== /DIAG =====
+  { let dbg=document.getElementById('DBG'); if(!dbg){ dbg=document.createElement('div'); dbg.id='DBG'; dbg.style.cssText='position:fixed;top:4px;right:4px;z-index:99999;background:#000d;color:#0f0;font:12px monospace;padding:6px;white-space:pre;pointer-events:none;max-width:62vw'; document.body.appendChild(dbg); }
+    const r=SYS_ROOT.getBoundingClientRect();
+    const cr=canvas.getBoundingClientRect();
+    const hit=pieceAt(e.clientX,e.clientY);
+    dbg.textContent='DOWN '+SYS_ROOT.id+' dpr='+(window.devicePixelRatio||1)
+      +'\nclient='+Math.round(e.clientX)+','+Math.round(e.clientY)
+      +'\nsysR L'+Math.round(r.left)+' T'+Math.round(r.top)+' W'+Math.round(r.width)+' H'+Math.round(r.height)
+      +'\ncvR  L'+Math.round(cr.left)+' T'+Math.round(cr.top)+' W'+Math.round(cr.width)+' H'+Math.round(cr.height)
+      +'\nVW='+VW()+' VH='+VH()
+      +'\nndc='+mouseV.x.toFixed(2)+','+mouseV.y.toFixed(2)
+      +'\nPIECE='+(!!hit)+' dragging(after)='; 
+    window.__pickHit=hit; }
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
@@ -1581,6 +1584,7 @@ canvas.addEventListener('pointerdown',e=>{
     clearTimeout(pressTimer);
     pressTimer=setTimeout(()=>{ if(dragging&&!moved&&dragPiece===tgt){ dragging=false; dragAxis=null; lockPiece(tgt); dragPiece=null; } }, LONGPRESS_MS);
   }
+  { const d=document.getElementById('DBG'); if(d) d.textContent+=dragging; }
 });
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
