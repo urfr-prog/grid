@@ -394,13 +394,12 @@
      #stage couvre l'écran et pose les deux .sys côte à côte (gauche|droite).
      Chaque .sys est un demi-écran autonome ; ses éléments UI passent en
      position:absolute (relatifs au .sys) au lieu de fixed (viewport). */
-  #stage { position:fixed; inset:0; display:flex; touch-action:none; }
-  .sys { position:relative; flex:1 1 50%; height:100%; overflow:hidden; touch-action:none; }
+  #stage { position:fixed; inset:0; display:flex; }
+  .sys { position:relative; flex:1 1 50%; height:100%; overflow:hidden; }
   /* canvas : dimensions SWAPPÉES (w=hauteur du .sys, h=largeur du .sys) pour qu'après
      rotation -90° il remplisse exactement le demi-écran sans déformation. */
   .sys #c { position:absolute; top:50%; left:50%; width:100vh; height:50vw;
-            transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center center;
-            display:block; touch-action:none; }   /* v60n : touch-action explicite → fix tactile iOS split */
+            transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center center; }
   /* UI scopée au demi-écran : ce qui était fixed/left:50% devient absolute dans le .sys.
      v60m : la .nav-bar est EXCLUE ici → elle reste fixed, empilée dans la colonne gauche. */
   .sys .goal-tag,
@@ -1441,14 +1440,21 @@ function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
 // v59 : canvas tourné -90°. clientX/clientY physiques → NDC du repère logique redressé.
-// v60n2 : FIX split-screen. L'ancienne formule (lx=cy, ly=VH()-cx) supposait le système à
-// l'origine écran. On la garde TELLE QUELLE mais sur des coords relatives au .sys (SYS_ROOT,
-// NON tourné → rect fiable, contrairement au canvas qui subit rotate(-90deg)).
+// v60n3 : géométrie EXACTE. Le canvas est rendu en VW()xVH() (pixels canvas) PUIS tourné
+// de -90° par CSS autour de son centre. Pour retrouver le point dans le repère canvas
+// (celui que three.js connaît), on prend le point relatif au CENTRE du .sys et on applique
+// la rotation INVERSE (+90°). Marche identiquement pour sysA et sysB (chacun son rect).
 function setNDC(cx,cy){
   const r=SYS_ROOT.getBoundingClientRect();
-  const px=cx-r.left, py=cy-r.top;        // coords dans le demi-écran de CE système
-  const lx=py, ly=VH()-px;                // même mapping -90° qu'avant, recalé sur l'origine du sys
-  mouseV.x=(lx/VW())*2-1; mouseV.y=-(ly/VH())*2+1;
+  // point écran relatif au centre du demi-écran
+  const ex=(cx-r.left)-r.width/2;
+  const ey=(cy-r.top)-r.height/2;
+  // rotation inverse +90° : (ex,ey) écran → (canvasX,canvasY) dans le canvas non tourné.
+  // rotate(-90) envoie canvas (X,Y) vers écran ; l'inverse : canvasX = -ey, canvasY = ex.
+  const canvasX = -ey + VW()/2;   // 0..VW()
+  const canvasY =  ex + VH()/2;   // 0..VH()
+  mouseV.x=(canvasX/VW())*2-1;
+  mouseV.y=-((canvasY/VH())*2-1);
 }
 function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
   const meshes=[]; curBoard().forEach(p=>{ if(p&&p.mesh&&p.mesh.visible)p.mesh.traverse(c=>{if(c.isMesh)meshes.push(c);}); });
@@ -1618,6 +1624,10 @@ canvas.addEventListener('pointerup',e=>{
   dragPiece=null;
 });
 canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; refreshZoom(); } dragPiece=null; });
+// v60n : FIX TACTILE iOS. Sur un canvas tourné -90°, Safari interprète mal touch-action et
+// déclenche un scroll natif → pointercancel → le slide ne démarre jamais. On bloque le scroll
+// natif sur le canvas pendant le geste (listener NON passif, sinon preventDefault est ignoré).
+canvas.addEventListener('touchmove',e=>{ e.preventDefault(); }, {passive:false});
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
   const sp=wp.clone().project(camera); return (sp.x*0.5+0.5)*VW(); }
 
@@ -2263,10 +2273,6 @@ const clock=new THREE.Clock(); let last=0, tScaled=0;
 function fitCamera(){
   const w=VW(), h=VH(), aspect=w/h;
   renderer.setSize(w,h,false); camera.aspect=aspect;
-  // v60m2 FIX iOS : le canvas CSS était en vh/vw (viewport) → divergeait du .sys réel sur
-  // iPhone (safe-areas, barre URL). On le force en px sur les dims LOGIQUES. width_css=VW
-  // → après rotate(-90°) occupe VH(écran-largeur)×VW(écran-hauteur)=clientWidth×clientHeight.
-  canvas.style.width=w+'px'; canvas.style.height=h+'px';
   const vFOV=camera.fov*Math.PI/180;
   // Comme prisme V11 : la grille occupe le maximum de largeur en ne laissant qu'un petit
   // interstice de chaque côté (~10px). On cadre en PRIORITÉ sur la largeur.
@@ -2362,7 +2368,6 @@ const SYS = {
     this.renderer.render(this.scene,this.camera);
   },
   // v60k : actions exposées pour les CONTRÔLES COMMUNS (barre unique).
-  refit(){ fitCamera(); },   // v60m2 : re-cadrage forcé (resync canvas CSS iOS)
   undo(){ doUndo(); },
   setMedians(on){
     showMedians=on;
@@ -2512,11 +2517,6 @@ return SYS;
 const sysA = createSystem(document.getElementById('sysA'));
 const sysB = createSystem(document.getElementById('sysB'));
 const SYSTEMS = [sysA, sysB];
-// v60m2 FIX iOS : Safari recalcule vh/safe-areas APRÈS le 1er layout → re-cadrer les deux
-// systèmes une fois stabilisé, et à chaque rotation d'écran.
-function refitAll(){ sysA.refit(); sysB.refit(); }
-[120,400,900].forEach(ms=>setTimeout(refitAll,ms));
-window.addEventListener('orientationchange',()=>setTimeout(refitAll,250));
 
 // v60l : COORDINATION DES DEUX SYSTÈMES — échelle commune + rapprochement vers le centre.
 //  • Échelle commune : on prend la plus large emprise (max des Z solo) pour que rien ne sorte
