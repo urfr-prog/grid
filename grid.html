@@ -2263,6 +2263,10 @@ const clock=new THREE.Clock(); let last=0, tScaled=0;
 function fitCamera(){
   const w=VW(), h=VH(), aspect=w/h;
   renderer.setSize(w,h,false); camera.aspect=aspect;
+  // v60m2 FIX iOS : le canvas CSS était en vh/vw (viewport) → divergeait du .sys réel sur
+  // iPhone (safe-areas, barre URL). On le force en px sur les dims LOGIQUES. width_css=VW
+  // → après rotate(-90°) occupe VH(écran-largeur)×VW(écran-hauteur)=clientWidth×clientHeight.
+  canvas.style.width=w+'px'; canvas.style.height=h+'px';
   const vFOV=camera.fov*Math.PI/180;
   // Comme prisme V11 : la grille occupe le maximum de largeur en ne laissant qu'un petit
   // interstice de chaque côté (~10px). On cadre en PRIORITÉ sur la largeur.
@@ -2358,6 +2362,7 @@ const SYS = {
     this.renderer.render(this.scene,this.camera);
   },
   // v60k : actions exposées pour les CONTRÔLES COMMUNS (barre unique).
+  refit(){ fitCamera(); },   // v60m2 : re-cadrage forcé (resync canvas CSS iOS)
   undo(){ doUndo(); },
   setMedians(on){
     showMedians=on;
@@ -2507,6 +2512,11 @@ return SYS;
 const sysA = createSystem(document.getElementById('sysA'));
 const sysB = createSystem(document.getElementById('sysB'));
 const SYSTEMS = [sysA, sysB];
+// v60m2 FIX iOS : Safari recalcule vh/safe-areas APRÈS le 1er layout → re-cadrer les deux
+// systèmes une fois stabilisé, et à chaque rotation d'écran.
+function refitAll(){ sysA.refit(); sysB.refit(); }
+[120,400,900].forEach(ms=>setTimeout(refitAll,ms));
+window.addEventListener('orientationchange',()=>setTimeout(refitAll,250));
 
 // v60l : COORDINATION DES DEUX SYSTÈMES — échelle commune + rapprochement vers le centre.
 //  • Échelle commune : on prend la plus large emprise (max des Z solo) pour que rien ne sorte
