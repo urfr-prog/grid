@@ -396,9 +396,9 @@
      position:absolute (relatifs au .sys) au lieu de fixed (viewport). */
   #stage { position:fixed; inset:0; display:flex; }
   .sys { position:relative; flex:1 1 50%; height:100%; overflow:hidden; }
-  /* canvas : dimensions SWAPPÉES (w=hauteur du .sys, h=largeur du .sys) pour qu'après
-     rotation -90° il remplisse exactement le demi-écran sans déformation. */
-  .sys #c { position:absolute; top:50%; left:50%; width:100vh; height:50vw;
+  /* canvas : dimensions SWAPPÉES posées en PIXELS par fitCamera (= VW×VH), pas en 100vh/50vw
+     qui incluent la safe-area iPhone et désalignent rendu/affichage. */
+  .sys #c { position:absolute; top:50%; left:50%;
             transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center center; }
   /* UI scopée au demi-écran : ce qui était fixed/left:50% devient absolute dans le .sys.
      v60m : la .nav-bar est EXCLUE ici → elle reste fixed, empilée dans la colonne gauche. */
@@ -1440,19 +1440,15 @@ function tickRot(dt){ if(!rotAnim)return; rotAnim.t+=dt*6.0;   // ~0.167s (plus 
 // ─── ENTRÉE POINTEUR : tap (rotation) ou glissement (ligne/colonne) ───
 const raycaster=new THREE.Raycaster(), mouseV=new THREE.Vector2();
 // v59 : canvas tourné -90°. clientX/clientY physiques → NDC du repère logique redressé.
-// v60n3 : géométrie EXACTE. Le canvas est rendu en VW()xVH() (pixels canvas) PUIS tourné
-// de -90° par CSS autour de son centre. Pour retrouver le point dans le repère canvas
-// (celui que three.js connaît), on prend le point relatif au CENTRE du .sys et on applique
-// la rotation INVERSE (+90°). Marche identiquement pour sysA et sysB (chacun son rect).
+// v60n5 : le canvas (tourné -90°) remplit EXACTEMENT le .sys (taille px posée par fitCamera).
+// Centre écran = centre du .sys. On prend le point relatif au centre, dimensions = rect réel.
 function setNDC(cx,cy){
   const r=SYS_ROOT.getBoundingClientRect();
-  // point écran relatif au centre du demi-écran
-  const ex=(cx-r.left)-r.width/2;
-  const ey=(cy-r.top)-r.height/2;
-  // rotation inverse +90° : (ex,ey) écran → (canvasX,canvasY) dans le canvas non tourné.
-  // rotate(-90) envoie canvas (X,Y) vers écran ; l'inverse : canvasX = -ey, canvasY = ex.
-  const canvasX = -ey + VW()/2;   // 0..VW()
-  const canvasY =  ex + VH()/2;   // 0..VH()
+  const ex=(cx-r.left)-r.width/2;    // horizontal écran depuis le centre
+  const ey=(cy-r.top)-r.height/2;    // vertical écran depuis le centre
+  // rotation inverse +90° : canvasX=-ey, canvasY=ex (canvas non tourné = VW×VH)
+  const canvasX = -ey + VW()/2;      // 0..VW()
+  const canvasY =  ex + VH()/2;      // 0..VH()
   mouseV.x=(canvasX/VW())*2-1;
   mouseV.y=-((canvasY/VH())*2-1);
 }
@@ -1551,16 +1547,13 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
 canvas.addEventListener('pointerdown',e=>{
   { let dbg=document.getElementById('DBG'); if(!dbg){ dbg=document.createElement('div'); dbg.id='DBG'; dbg.style.cssText='position:fixed;top:4px;right:4px;z-index:99999;background:#000d;color:#0f0;font:12px monospace;padding:6px;white-space:pre;pointer-events:none;max-width:62vw'; document.body.appendChild(dbg); }
     const r=SYS_ROOT.getBoundingClientRect();
-    const cr=canvas.getBoundingClientRect();
     const hit=pieceAt(e.clientX,e.clientY);
-    dbg.textContent='DOWN '+SYS_ROOT.id+' dpr='+(window.devicePixelRatio||1)
-      +'\nclient='+Math.round(e.clientX)+','+Math.round(e.clientY)
-      +'\nsysR L'+Math.round(r.left)+' T'+Math.round(r.top)+' W'+Math.round(r.width)+' H'+Math.round(r.height)
-      +'\ncvR  L'+Math.round(cr.left)+' T'+Math.round(cr.top)+' W'+Math.round(cr.width)+' H'+Math.round(cr.height)
-      +'\nVW='+VW()+' VH='+VH()
-      +'\nndc='+mouseV.x.toFixed(2)+','+mouseV.y.toFixed(2)
-      +'\nPIECE='+(!!hit)+' dragging(after)='; 
-    window.__pickHit=hit; }
+    dbg.textContent='DOWN '+SYS_ROOT.id
+      +'\\nclient='+Math.round(e.clientX)+','+Math.round(e.clientY)
+      +'\\nsysR L'+Math.round(r.left)+' T'+Math.round(r.top)+' W'+Math.round(r.width)+' H'+Math.round(r.height)
+      +'\\nVW='+VW()+' VH='+VH()
+      +'\\nndc='+mouseV.x.toFixed(2)+','+mouseV.y.toFixed(2)
+      +'\\nPIECE='+(!!hit); }
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
@@ -1584,7 +1577,6 @@ canvas.addEventListener('pointerdown',e=>{
     clearTimeout(pressTimer);
     pressTimer=setTimeout(()=>{ if(dragging&&!moved&&dragPiece===tgt){ dragging=false; dragAxis=null; lockPiece(tgt); dragPiece=null; } }, LONGPRESS_MS);
   }
-  { const d=document.getElementById('DBG'); if(d) d.textContent+=dragging; }
 });
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
@@ -2286,6 +2278,11 @@ const clock=new THREE.Clock(); let last=0, tScaled=0;
 function fitCamera(){
   const w=VW(), h=VH(), aspect=w/h;
   renderer.setSize(w,h,false); camera.aspect=aspect;
+  // v60n5 : FIX iPhone notch. Le canvas est tourné -90°, donc sa LARGEUR CSS (avant rotation)
+  // doit valoir VW (=hauteur du sys) et sa HAUTEUR CSS valoir VH (=largeur du sys). On le force
+  // ici en pixels au lieu de 100vh/50vw, car 100vh inclut la safe-area (notch) que le .sys n'a
+  // pas → sinon affichage et rendu divergent et le picking part en vrille.
+  canvas.style.width=w+'px'; canvas.style.height=h+'px';
   const vFOV=camera.fov*Math.PI/180;
   // Comme prisme V11 : la grille occupe le maximum de largeur en ne laissant qu'un petit
   // interstice de chaque côté (~10px). On cadre en PRIORITÉ sur la largeur.
