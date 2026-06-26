@@ -1528,6 +1528,7 @@ function dropPiece(cx,cy){
 }
 
 let downX=0,downY=0,downT=0,moved=false;
+let downCX=0,downCY=0;   // SONDE v70 : position doigt brute (clientX/Y) au down
 // v59 : deltas de geste dans le repère redressé (-90°).
 // v60n2 : recalés sur le .sys (SYS_ROOT non tourné) → cohérent pour sysA ET sysB.
 function LX(e){ const r=SYS_ROOT.getBoundingClientRect(); return e.clientY-r.top; }
@@ -1549,6 +1550,7 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
   showToast(B.currentLayer===0?'Plan avant':'Plan arrière');
 }
 canvas.addEventListener('pointerdown',e=>{
+  downCX=e.clientX; downCY=e.clientY;   // SONDE v70 : position doigt brute au down
   { let dbg=document.getElementById('DBG'); if(!dbg){ dbg=document.createElement('div'); dbg.id='DBG'; dbg.style.cssText='position:fixed;top:4px;right:4px;z-index:99999;background:#000d;color:#0f0;font:12px monospace;padding:6px;white-space:pre;pointer-events:none;max-width:62vw'; document.body.appendChild(dbg); }
     const r=SYS_ROOT.getBoundingClientRect();
     const hit=pieceAt(e.clientX,e.clientY);
@@ -1585,6 +1587,13 @@ canvas.addEventListener('pointerdown',e=>{
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
   const dx=LX(e)-downX, dy=LY(e)-downY;
+  // ── SONDE v70 (diagnostic touch) : compare delta DOIGT brut vs delta LX/LY vs axe choisi ──
+  { const dbg=document.getElementById('DBG'); if(dbg){
+      const fdx=Math.round(e.clientX-downCX), fdy=Math.round(e.clientY-downCY);
+      const axe=(dragAxis||((Math.abs(dx)>Math.abs(dy))?'vertical?':'horizontal?'));
+      dbg.textContent='MOVE\\ndoigt dX='+fdx+' dY='+fdy
+        +'\\nLXY  dx='+Math.round(dx)+' dy='+Math.round(dy)
+        +'\\naxe code='+axe; } }
   if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
   if(lockedPiece) return;   // pièce flottante : pas de slide ; le swipe est traité au pointerup (nav)
   if(dragAxis===null){
