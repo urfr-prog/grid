@@ -806,12 +806,15 @@ function makeBank(){ return {
   porteStash:{},                        // tiroir des dominos écrasés par une porte
   targetQuat:new THREE.Quaternion(),    // orientation cible du carrousel (slerp dans animate)
   isAnimating:false, navDir:0, navTarget:0, busy:false,
-  spin:null                             // v74 : groupe carrousel (spinGroup) de ce banc
+  spin:null,                            // v74 : groupe carrousel (spinGroup) de ce banc
+  bank:0                                // v78 : index de banc (posé à la création)
 }; }
-const banks=[]; for(let b=0;b<BANKS;b++) banks.push(makeBank());
+const banks=[]; for(let b=0;b<BANKS;b++){ const bk=makeBank(); bk.bank=b; banks.push(bk); }
 let activeBank=0;
 let B = banks[activeBank];              // banc actif courant — réassigné au changement de banc
 function setActiveBank(b){ activeBank=b; B=banks[b]; }
+// v78 : clé du plateau courant DANS le banc actif (au lieu de boardKey figé sur banc 0)
+function curKey(face){ return bankKey(B.currentLayer, (face==null?B.currentBoard:face), B.bank); }
 function isPorteIdx(i){ return B.PORTE_POSITIONS.includes(i); }
 // v60j2 : dimensions LOGIQUES basées sur le CONTENEUR .sys (non tourné), avec swap -90°.
 // Le .sys fait (demi-largeur × pleine-hauteur). Canvas tourné -90° → largeur logique du jeu
@@ -959,16 +962,18 @@ function buildBoards(){
   // v49 : NLAYERS*NBOARDS plateaux plats. Layer 0 = niveaux de jeu (DEMOS).
   // Layer 1 = plan arrière ; seedé avec les mêmes niveaux décalés d'une face
   //  → quelque chose à VOIR en swipant, sans mécanique de croisement.
-  boards=new Array(NLAYERS*NBOARDS).fill(null).map(()=>new Array(TOTAL).fill(null));
+  boards=new Array(BANKS*NLAYERS*NBOARDS).fill(null).map(()=>new Array(TOTAL).fill(null));
+  for(let bank=0;bank<BANKS;bank++){
   for(let layer=0;layer<NLAYERS;layer++){
     DEMOS.forEach((demo,f)=>{
       const srcDemo = layer===0 ? demo : DEMOS_BACK[f];   // v52 : layer 1 = niveaux PROPRES distincts (DEMOS_BACK)
-      const key=boardKey(layer,f);
+      const key=bankKey(layer,f,bank);
       srcDemo.forEach(([idx,state,face1,face2,rotation,regress,target])=>{
         const mesh=createDominoMesh(face1,face2,state,regress,rotation||0); mesh.visible=false; addDomino(mesh,key);
         boards[key][idx]={state,state1:state,state2:state,face1,face2,rotation:rotation||0,regress:!!regress,target:!!target,mesh,face:f,layer,key};
       });
     });
+  }
   }
   // v46 : aucune porte au démarrage — les positions 21/22/23 sont des dominos libres normaux.
 }
@@ -1067,7 +1072,7 @@ function clearPorteProxies(){ porteProxies.forEach(m=>{ if(m.parent)m.parent.rem
 function showPorteProxies(){
   clearPorteProxies();
   for(const idx of B.PORTE_POSITIONS){
-    const p=boards[boardKey(B.currentLayer,B.currentBoard)][idx]; if(!p)continue;
+    const p=boards[curKey()][idx]; if(!p)continue;
     if(p.mesh) p.mesh.visible=false;                       // masque le vrai (il va tourner avec la face)
     const {col,row}=getPos(idx); const {x,y}=cellToLocal(col,row);
     const proxy=createDominoMesh(p.face1,p.face2,p.state,p.regress,p.rotation||0);
@@ -1081,7 +1086,7 @@ function showPorteProxies(){
 }
 function hidePorteProxies(){
   clearPorteProxies();
-  for(const idx of B.PORTE_POSITIONS){ const p=boards[boardKey(B.currentLayer,B.currentBoard)][idx]; if(p&&p.mesh)p.mesh.visible=true; }
+  for(const idx of B.PORTE_POSITIONS){ const p=boards[curKey()][idx]; if(p&&p.mesh)p.mesh.visible=true; }
 }
 
 // ─── HALO DE PORTE : faisceaux cosmic reliant les plateaux (visibles pendant la rotation) ───
@@ -1158,7 +1163,7 @@ function assignFaces(){
   // v49 : applique l'atténuation de profondeur (layer arrière assombri/transparent).
   applyLayerDepth();
   // oriente le cube sur la face courante (sans animation : pose directe)
-  cubeGroup.quaternion.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(B.currentBoard));
+  B.spin.quaternion.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(B.currentBoard));
 }
 // v49 : atténuation visuelle par couche. Le layer ACTIF reste net ; le layer
 // non-actif recule visuellement (opacité réduite) → un seul plan lisible à la fois,
@@ -1197,14 +1202,14 @@ const ROT_DUR=0.55;
 let swapAnim=null;            // réutilisé pour animer le snap du glissement
 let rotAnim=null;             // animation de pivot du domino au tap (slerp doux, feel du layer)
 
-function curBoard(){ return boards[boardKey(B.currentLayer,B.currentBoard)]; }
+function curBoard(){ return boards[curKey()]; }
 
 // v37 : PLATEAU CADUC. Un plateau est "vivant" tant qu'il porte au moins UNE pièce LIBRE
 // (ni porte, ni cible). Les portes étant toujours pleines (refillPortes), elles ne comptent
 // pas : sinon aucun plateau ne serait jamais caduc. Quand un plateau perd sa dernière pièce
 // libre (par fusion/twin/migration), il devient caduc → son dot disparaît, le compteur du
 // haut diminue. Cela donne un sens aux échanges : on vide les plateaux un à un.
-function boardIsLive(f){ const b=boards[boardKey(B.currentLayer,f)]; if(!b)return false;
+function boardIsLive(f){ const b=boards[curKey(f)]; if(!b)return false;
   for(let i=0;i<TOTAL;i++){ const p=b[i]; if(p&&!isPorteIdx(i)&&!p.target) return true; }
   return false; }
 function liveBoardCount(){ let n=0; for(let f=0;f<NBOARDS;f++) if(boardIsLive(f))n++; return n; }
@@ -1230,7 +1235,7 @@ function navLeft(){ if(B.busy||B.isAnimating||swapAnim||rotAnim)return; const tg
   showPorteProxies(); refreshZoom(tgt);   // v37 : zoom vise déjà l'arrivée (geste continu)
   B.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt)); }
 function onRotationComplete(){ B.currentBoard=B.navTarget; B.navDir=0;
-  cubeGroup.quaternion.copy(B.targetQuat); assignFaces(); hidePorteProxies(); B.isAnimating=false; B.busy=false; updateUI(); refreshZoom();
+  B.spin.quaternion.copy(B.targetQuat); assignFaces(); hidePorteProxies(); B.isAnimating=false; B.busy=false; updateUI(); refreshZoom();
   setTimeout(checkFusions,100); }
 
 function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>{
@@ -1493,7 +1498,7 @@ let pressTimer=null, lockFloatBase=null;
 // case (col,row) du plateau courant sous un point écran (raycast sur le plan de grille)
 function cellAt(cx,cy){
   setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
-  const g=gridMeshes[boardKey(B.currentLayer,B.currentBoard)]; if(!g) return null;
+  const g=gridMeshes[curKey()]; if(!g) return null;
   const hit=raycaster.intersectObject(g,false); if(!hit.length) return null;
   const lp=g.worldToLocal(hit[0].point.clone());
   const col=Math.round(lp.x/CELL_W+(COLS-1)/2);
@@ -1534,7 +1539,7 @@ function dropPiece(cx,cy){
     idx=best;
   }
   // ré-attache au plateau courant et pose
-  const dkey=boardKey(B.currentLayer,B.currentBoard);
+  const dkey=curKey();
   cubeGroup.attach(p.mesh);
   if(p.mesh.parent!==faceGroups[dkey]) faceGroups[dkey].attach(p.mesh);
   p.mesh.scale.set(1,1,1); p.locked=false; p.face=B.currentBoard; p.layer=B.currentLayer; p.key=dkey;
@@ -1568,10 +1573,15 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
   showToast(B.currentLayer===0?'Plan avant':'Plan arrière');
 }
 canvas.addEventListener('pointerdown',e=>{
+  // v78 : ROUTAGE BANC — la moitié d'écran touchée choisit le banc actif (pouce gauche→banc0, droit→banc1).
+  if(BANKS>1 && !lockedPiece && !B.isAnimating && !B.busy){
+    const r=SYS_ROOT.getBoundingClientRect();
+    setActiveBank((e.clientX-r.left) < r.width/2 ? 0 : 1);
+  }
   // ── SONDE v75 : positions réelles des pièces vs impact ──
   (function(){
     setNDC(e.clientX,e.clientY); raycaster.setFromCamera(mouseV,camera);
-    const g=gridMeshes[boardKey(B.currentLayer,B.currentBoard)];
+    const g=gridMeshes[curKey()];
     let impact='—';
     if(g){ const hit=raycaster.intersectObject(g,false); if(hit.length){ const lp=g.worldToLocal(hit[0].point.clone()); impact=lp.x.toFixed(1)+','+lp.y.toFixed(1); } }
     const cb=curBoard(); let cnt=0; let poss=[];
@@ -2272,8 +2282,8 @@ function migrateDown(result){
   // l'état du résultat est RÉTROGRADÉ en traversant (coût de la migration, variable par plan)
   const landedState=demoteState(result.state, demoteFor(nextBoard));
   // poser une copie du résultat (rétrogradé) sur la case d'accueil imposée du plan suivant (si libre)
-  if(!boards[boardKey(B.currentLayer,nextBoard)][LANDING_IDX]){
-    const nkey=boardKey(B.currentLayer,nextBoard);
+  if(!boards[curKey(nextBoard)][LANDING_IDX]){
+    const nkey=curKey(nextBoard);
     const mesh=createDominoMesh(result.face1,result.face2,landedState,false,0); mesh.visible=false; addDomino(mesh,nkey);
     boards[nkey][LANDING_IDX]={
       state:landedState, state1:landedState, state2:landedState,
@@ -2281,7 +2291,7 @@ function migrateDown(result){
     };
   }
   // retirer le résultat du plan de tête (il a "traversé")
-  const head=boards[boardKey(B.currentLayer,B.currentBoard)];
+  const head=boards[curKey()];
   const hi=head.indexOf(result); if(hi>=0){ if(result.mesh)removeDomino(result.mesh); head[hi]=null; }
   assignFaces();
   const demoted = landedState!==result.state;
@@ -2312,7 +2322,8 @@ function fitCamera(){
   // interstice de chaque côté (~10px). On cadre en PRIORITÉ sur la largeur.
   const sidePx=10;                                         // interstice latéral souhaité
   const marginW=(w+2*sidePx)/w;                            // largeur cible = écran - 2*interstice
-  const needW=(FACE_W*marginW)/(2*Math.tan(vFOV/2)*aspect);// distance pour remplir la largeur
+  const spanW=(BANKS>1)?(BANK_GAP+FACE_W):FACE_W;          // v78 : 2 bancs côte à côte
+  const needW=(spanW*marginW)/(2*Math.tan(vFOV/2)*aspect); // distance pour remplir la largeur
   // v34 : zones réservées en haut (barre nav) et en bas (boutons pouce). La grille se cale
   // dans la bande centrale restante ; on recentre la caméra sur le milieu de cette bande.
   const topPx=58, botPx=92;                                // hauteurs réservées (CSS ci-dessus)
@@ -2326,7 +2337,7 @@ function fitCamera(){
   // v36 : la face courante a son contenu décalé de -PIVOT_X (axe de rotation sur col3/4).
   // On recentre la grille à l'écran en visant X=-PIVOT_X (la grille reste centrée de face,
   // mais bascule autour de col3/4 lors de la rotation cube).
-  const offX=-PIVOT_X;
+  const offX=-PIVOT_X + ((BANKS>1)?BANK_GAP/2:0);          // v78 : milieu des 2 bancs
   // v36 : mémorise le cadrage PLEIN (toute la grille) comme borne large du zoom.
   baseFitZ=camera.position.z; baseFitY=offY; baseWorldPerPx=worldPerPx; vFOVcache=vFOV;
   camera.position.set(offX,offY,camera.position.z); camera.lookAt(offX,offY,0);
@@ -2359,7 +2370,9 @@ function refreshZoom(boardIdx){
   // emprise = au moins la grille entière ; on étend si des pièces (glissées) dépassent.
   const exMinX=Math.min(-FACE_W/2, n?minX:Infinity), exMaxX=Math.max(FACE_W/2, n?maxX:-Infinity);
   const exMinY=Math.min(-FACE_H/2, n?minY:Infinity), exMaxY=Math.max(FACE_H/2, n?maxY:-Infinity);
-  const padW=(exMaxX-exMinX)+2.0*CELL_W, padH=(exMaxY-exMinY)+2.0*CELL_W;
+  // v78 : avec 2 bancs, la largeur à cadrer couvre du banc 0 (~0) au banc 1 (~BANK_GAP).
+  const spanX = (BANKS>1) ? (BANK_GAP + (exMaxX-exMinX)) : (exMaxX-exMinX);
+  const padW=spanX+2.0*CELL_W, padH=(exMaxY-exMinY)+2.0*CELL_W;
   const aspect=VW()/VH();
   const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
   const needZh=padH/(2*Math.tan(vFOVcache/2));
@@ -2369,7 +2382,7 @@ function refreshZoom(boardIdx){
   targetCamY=baseFitY;                         // v75 TEST : suivre le décalage vertical de fitCamera
                                                // (zones réservées haut/bas). targetCamY=0 le ré-annulait,
                                                // créant un flottement Y ~1u en paysage → picking 1 rangée trop haut.
-  targetCamX=-PIVOT_X+coordYShift;             // v75 FIX : la grille est centrée sur -PIVOT_X (axe col3/4).
+  targetCamX=-PIVOT_X+coordYShift + ((BANKS>1)?BANK_GAP/2:0);  // v78 : centre entre banc0 et banc1
                                                // refreshZoom posait 0 → décalage 1.5u, invisible en portrait
                                                // mais énorme en paysage (asp 1.87) → picking ratait 9/10.
   // v75 : bloc test 2-bancs RETIRÉ — il reculait la caméra sur BANK_GAP+2 grilles et décalait
@@ -2426,8 +2439,8 @@ const SYS = {
 function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const dtRaw=t-last; last=t; const dt=dtRaw*TS; tScaled+=dt;
   if(B.isAnimating){
     // ROTATION DU CUBE : slerp doux vers l'orientation cible (façon mada)
-    cubeGroup.quaternion.slerp(B.targetQuat,0.12*TS);
-    if(1-Math.abs(cubeGroup.quaternion.dot(B.targetQuat))<0.0001){ cubeGroup.quaternion.copy(B.targetQuat); onRotationComplete(); }
+    B.spin.quaternion.slerp(B.targetQuat,0.12*TS);
+    if(1-Math.abs(B.spin.quaternion.dot(B.targetQuat))<0.0001){ B.spin.quaternion.copy(B.targetQuat); onRotationComplete(); }
   }
   tickSwap(dt);
   tickRot(dt);
@@ -2517,7 +2530,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     const aspect=VW()/VH();
     const halfSweep=(FACE_W/2+Math.abs(PIVOT_X))+0.4*CELL_W;
     const zSafe=halfSweep/(Math.tan(vFOVcache/2)*aspect);
-    const dotv=Math.min(1,Math.abs(cubeGroup.quaternion.dot(B.targetQuat)));
+    const dotv=Math.min(1,Math.abs(B.spin.quaternion.dot(B.targetQuat)));
     const angLeft=2*Math.acos(dotv);                  // radians restants (≈π/2 au départ)
     const prog=1-Math.min(1,angLeft/(Math.PI/2));     // 0→1
     bell=Math.sin(Math.min(1,Math.max(0,prog))*Math.PI); // 0 aux bords, 1 au milieu
@@ -2530,6 +2543,13 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   camera.position.z += (zGoal-camera.position.z)*0.12*TS;
   camera.position.y += (targetCamY-camera.position.y)*0.08*TS;
   camera.position.x += (xGoal-camera.position.x)*0.12*TS;
+  // ── SONDE v80 cadrage (lecture seule) ──
+  { const _p=document.getElementById('probe75');
+    if(_p){ const b1=banks[1]&&banks[1].spin?banks[1].spin.position.x.toFixed(1):'?';
+      _p.textContent='BANKS='+BANKS+' GAP='+BANK_GAP.toFixed(1)+' b1x='+b1
+        +' | tgtX='+targetCamX.toFixed(2)+' camX='+camera.position.x.toFixed(2)
+        +' camZ='+camera.position.z.toFixed(1)+' tgtZ='+targetCamZ.toFixed(1)
+        +' bell='+bell.toFixed(2); } }
   // v49 : lissage de la transition de profondeur entre layers (swipe vertical 2 doigts).
   if(NLAYERS>1){
     const lf=layerFade; layerFade += (B.currentLayer-layerFade)*0.14*TS;
