@@ -1550,7 +1550,14 @@ canvas.addEventListener('pointerdown',e=>{
   if(B.isAnimating||swapAnim||migrating)return;
   if(B.busy && !rotAnim)return;
   dragPiece=pieceAt(e.clientX,e.clientY);
-  { let d=document.getElementById('DBG'); if(!d){d=document.createElement('div');d.id='DBG';d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#000e;color:#0f0;font:bold 16px monospace;padding:8px;white-space:pre;pointer-events:none';document.body.appendChild(d);} window.__d=d; window.__c=0; d.textContent='DOWN PIECE='+(!!dragPiece); }
+  { let d=document.getElementById('DBG'); if(!d){d=document.createElement('div');d.id='DBG';d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#000e;color:#0f0;font:bold 13px monospace;padding:8px;white-space:pre;pointer-events:none';document.body.appendChild(d);} window.__d=d; window.__c=0;
+    const cr=canvas.getBoundingClientRect();
+    d.textContent='PIECE='+(!!dragPiece)
+      +'\\nVW='+VW()+' VH='+VH()
+      +'\\ncanvasStyle '+canvas.style.width+' x '+canvas.style.height
+      +'\\ncanvasRect W'+Math.round(cr.width)+' H'+Math.round(cr.height)+' L'+Math.round(cr.left)+' T'+Math.round(cr.top)
+      +'\\nwin '+window.innerWidth+'x'+window.innerHeight+' dpr'+window.devicePixelRatio
+      +'\\nclient='+Math.round(e.clientX)+','+Math.round(e.clientY)+' ndc='+mouseV.x.toFixed(2)+','+mouseV.y.toFixed(2); }
   if(!dragPiece){
     // VIDE (hors pièce) : on arme un swipe horizontal → navigation plateau. Grande zone tactile.
     if(!B.isAnimating&&!swapAnim&&!migrating&&!(B.busy&&!rotAnim)){
