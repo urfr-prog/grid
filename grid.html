@@ -1550,6 +1550,7 @@ canvas.addEventListener('pointerdown',e=>{
   if(B.isAnimating||swapAnim||migrating)return;
   if(B.busy && !rotAnim)return;
   dragPiece=pieceAt(e.clientX,e.clientY);
+  { let d=document.getElementById('DBG'); if(!d){d=document.createElement('div');d.id='DBG';d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#000e;color:#0f0;font:bold 16px monospace;padding:8px;white-space:pre;pointer-events:none';document.body.appendChild(d);} window.__d=d; window.__c=0; d.textContent='DOWN PIECE='+(!!dragPiece); }
   if(!dragPiece){
     // VIDE (hors pièce) : on arme un swipe horizontal → navigation plateau. Grande zone tactile.
     if(!B.isAnimating&&!swapAnim&&!migrating&&!(B.busy&&!rotAnim)){
@@ -1569,6 +1570,7 @@ canvas.addEventListener('pointerdown',e=>{
   }
 });
 canvas.addEventListener('pointermove',e=>{
+  { const d=window.__d; if(d){ window.__c=(window.__c||0)+1; d.textContent='MOVE cnt='+window.__c+' dragging='+dragging+' axis='+dragAxis; } }
   if(!dragging)return;
   const dx=LX(e)-downX, dy=LY(e)-downY;
   if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
