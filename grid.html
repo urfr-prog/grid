@@ -2534,6 +2534,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     cubeGroup.position.z = -RADIUS + layerFade*LAYER_GAP;
   }
   camera.lookAt(camera.position.x, camera.position.y, 0);
+  { const _p=document.getElementById('probe75'); if(_p&&!dragging) _p.textContent='camX='+camera.position.x.toFixed(2)+' tgtX='+targetCamX.toFixed(2)+' camZ='+camera.position.z.toFixed(1)+' asp='+(VW()/VH()).toFixed(2); }
   // v60a : rendu routé via la fondation factory (un seul système → iso-v5).
   SYS.render();
 }
