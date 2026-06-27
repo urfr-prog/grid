@@ -2545,11 +2545,10 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   camera.position.x += (xGoal-camera.position.x)*0.12*TS;
   // ── SONDE v80 cadrage (lecture seule) ──
   { const _p=document.getElementById('probe75');
-    if(_p){ const b1=banks[1]&&banks[1].spin?banks[1].spin.position.x.toFixed(1):'?';
-      _p.textContent='BANKS='+BANKS+' GAP='+BANK_GAP.toFixed(1)+' b1x='+b1
-        +' | tgtX='+targetCamX.toFixed(2)+' camX='+camera.position.x.toFixed(2)
-        +' camZ='+camera.position.z.toFixed(1)+' tgtZ='+targetCamZ.toFixed(1)
-        +' bell='+bell.toFixed(2); } }
+    if(_p){ let vis0=0,vis1=0; const NB=NLAYERS*NBOARDS;
+      boards.forEach((arr,key)=>{ if(!arr)return; const bk=Math.floor(key/NB); arr.forEach(p=>{ if(p&&p.mesh&&p.mesh.visible){ if(bk===0)vis0++; else vis1++; } }); });
+      _p.textContent='vis b0='+vis0+' b1='+vis1+' | cur0='+banks[0].currentBoard+' cur1='+banks[1].currentBoard
+        +' active='+activeBank+' anim='+(B.isAnimating?1:0); } }
   // v49 : lissage de la transition de profondeur entre layers (swipe vertical 2 doigts).
   if(NLAYERS>1){
     const lf=layerFade; layerFade += (B.currentLayer-layerFade)*0.14*TS;
