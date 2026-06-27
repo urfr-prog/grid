@@ -395,7 +395,8 @@
      Chaque .sys est un demi-écran autonome ; ses éléments UI passent en
      position:absolute (relatifs au .sys) au lieu de fixed (viewport). */
   #stage { position:fixed; inset:0; display:flex; }
-  .sys { position:relative; flex:1 1 50%; height:100%; overflow:hidden; }
+  /* v70 R2 : un seul .sys → plein écran (flex:1 occupe tout #stage). */
+  .sys { position:relative; flex:1 1 100%; width:100%; height:100%; overflow:hidden; }
   /* canvas : dimensions SWAPPÉES posées en PIXELS par fitCamera (= VW×VH), pas en 100vh/50vw
      qui incluent la safe-area iPhone et désalignent rendu/affichage. */
   .sys #c { position:absolute; top:50%; left:50%;
@@ -425,8 +426,8 @@
 </style>
 </head>
 <body>
-  <!-- v60j : deux systèmes côte à côte dans #stage. Chaque .sys est un demi-écran autonome.
-       Les IDs internes sont dupliqués : le helper $() les résout dans le root de chaque système. -->
+  <!-- v70 R2 : MOTEUR UNIQUE. Un seul .sys plein écran (sysB supprimé). createSystem
+       n'est instancié qu'une fois → SYS_ROOT = plein écran → picking calé sur le vrai canvas. -->
   <div id="stage">
   <div id="sysA" class="sys">
   <canvas id="c"></canvas>
@@ -434,12 +435,6 @@
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
   </div><!-- /#sysA -->
-  <div id="sysB" class="sys">
-  <canvas id="c"></canvas>
-  <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
-  <div class="toast" id="toast"></div>
-  <div class="goal-tag" id="goalTag"></div>
-  </div><!-- /#sysB -->
   <!-- v60k : BARRE DE CONTRÔLES COMMUNE (centrée en bas, chevauche les deux moitiés). -->
   <div id="commonBar">
     <button id="medBtnG" class="opt-btn" aria-label="Médianes">▤</button>
@@ -1528,7 +1523,6 @@ function dropPiece(cx,cy){
 }
 
 let downX=0,downY=0,downT=0,moved=false;
-let downCX=0,downCY=0;   // SONDE v70 : position doigt brute (clientX/Y) au down
 // v59 : deltas de geste dans le repère redressé (-90°).
 // v60n2 : recalés sur le .sys (SYS_ROOT non tourné) → cohérent pour sysA ET sysB.
 function LX(e){ const r=SYS_ROOT.getBoundingClientRect(); return e.clientY-r.top; }
@@ -1550,16 +1544,6 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
   showToast(B.currentLayer===0?'Plan avant':'Plan arrière');
 }
 canvas.addEventListener('pointerdown',e=>{
-  downCX=e.clientX; downCY=e.clientY;   // SONDE v70 : position doigt brute au down
-  { let dbg=document.getElementById('DBG'); if(!dbg){ dbg=document.createElement('div'); dbg.id='DBG'; dbg.style.cssText='position:fixed;top:4px;right:4px;z-index:99999;background:#000d;color:#0f0;font:12px monospace;padding:6px;white-space:pre;pointer-events:none;max-width:62vw'; document.body.appendChild(dbg); }
-    const r=SYS_ROOT.getBoundingClientRect();
-    const hit=pieceAt(e.clientX,e.clientY);
-    dbg.textContent='DOWN '+SYS_ROOT.id
-      +'\\nclient='+Math.round(e.clientX)+','+Math.round(e.clientY)
-      +'\\nsysR L'+Math.round(r.left)+' T'+Math.round(r.top)+' W'+Math.round(r.width)+' H'+Math.round(r.height)
-      +'\\nVW='+VW()+' VH='+VH()
-      +'\\nndc='+mouseV.x.toFixed(2)+','+mouseV.y.toFixed(2)
-      +'\\nPIECE='+(!!hit); }
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
@@ -1587,13 +1571,6 @@ canvas.addEventListener('pointerdown',e=>{
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
   const dx=LX(e)-downX, dy=LY(e)-downY;
-  // ── SONDE v70 (diagnostic touch) : compare delta DOIGT brut vs delta LX/LY vs axe choisi ──
-  { const dbg=document.getElementById('DBG'); if(dbg){
-      const fdx=Math.round(e.clientX-downCX), fdy=Math.round(e.clientY-downCY);
-      const axe=(dragAxis||((Math.abs(dx)>Math.abs(dy))?'vertical?':'horizontal?'));
-      dbg.textContent='MOVE\\ndoigt dX='+fdx+' dY='+fdy
-        +'\\nLXY  dx='+Math.round(dx)+' dy='+Math.round(dy)
-        +'\\naxe code='+axe; } }
   if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
   if(lockedPiece) return;   // pièce flottante : pas de slide ; le swipe est traité au pointerup (nav)
   if(dragAxis===null){
@@ -2528,26 +2505,12 @@ setTimeout(checkFusions, 300);
 return SYS;
 } // ── fin createSystem ──────────────────────────────────────────────────────
 
-// v60j : DEUX systèmes côte à côte. Chacun lié à son demi-écran (#sysA gauche, #sysB droite).
+// v70 R2 : MOTEUR UNIQUE — createSystem instancié UNE SEULE FOIS, sur le .sys plein écran.
 const sysA = createSystem(document.getElementById('sysA'));
-const sysB = createSystem(document.getElementById('sysB'));
-const SYSTEMS = [sysA, sysB];
+const SYSTEMS = [sysA];
 
-// v60l : COORDINATION DES DEUX SYSTÈMES — échelle commune + rapprochement vers le centre.
-//  • Échelle commune : on prend la plus large emprise (max des Z solo) pour que rien ne sorte
-//    d'aucun des deux demi-écrans, puis on l'impose aux deux → même taille de cellule.
-//  • Rapprochement : chaque système est décalé vers la médiane centrale. Le canvas est tourné
-//    -90°, donc l'axe HORIZONTAL écran = l'axe Y logique de la caméra. sysA (gauche) pousse vers
-//    +Y, sysB (droite) vers -Y (signes opposés). NUDGE règle l'intensité du rapprochement.
-const NUDGE = 0;  // v68 TEST : rapprochement neutralisé pour isoler le débordement horizontal
-(function coordinate(){
-  requestAnimationFrame(coordinate);
-  const zA=sysA.soloZ, zB=sysB.soloZ;
-  if(!isFinite(zA)||!isFinite(zB))return;
-  const zCommon=Math.max(zA,zB);            // la plus "reculée" → tout rentre des deux côtés
-  sysA.setCoord(zCommon, +NUDGE);           // gauche → pousse son contenu vers la médiane
-  sysB.setCoord(zCommon, -NUDGE);           // droite → pousse son contenu vers la médiane
-})();
+// v70 R2 : la coordination d'échelle entre deux demi-écrans n'a plus lieu d'être (un seul
+// système plein écran). L'échelle solo est gérée par refreshZoom interne ; rien à coordonner.
 
 // v60k : BARRE DE CONTRÔLES COMMUNE — pilote les deux systèmes.
 (function(){
@@ -2565,11 +2528,10 @@ const NUDGE = 0;  // v68 TEST : rapprochement neutralisé pour isoler le débord
     SYSTEMS.forEach(s=>s.setMedians(medOn));
   });
 
-  // — undo COMMUN : défait le dernier coup du système ayant l'historique le plus fourni. —
+  // — undo (moteur unique) —
   const undoBtn=document.getElementById('undoBtnG');
-  const pickSys=()=> (sysB.histLen>sysA.histLen) ? sysB : sysA;
-  const refreshUndo=()=>{ undoBtn.disabled = (sysA.histLen+sysB.histLen)===0; };
-  undoBtn.addEventListener('click',()=>{ const s=pickSys(); if(s.histLen>0){ s.undo(); s.refreshUndoBtn(); refreshUndo(); } });
+  const refreshUndo=()=>{ undoBtn.disabled = sysA.histLen===0; };
+  undoBtn.addEventListener('click',()=>{ if(sysA.histLen>0){ sysA.undo(); sysA.refreshUndoBtn(); refreshUndo(); } });
   refreshUndo();
   setInterval(refreshUndo,400);   // garde l'état actif/désactivé à jour après chaque coup
 })();
