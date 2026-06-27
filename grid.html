@@ -1469,7 +1469,7 @@ function setNDC(cx,cy){
   const ey=(cy-r.top)-r.height/2;    // vertical écran depuis le centre
   const canvasX = ex + VW()/2;       // 0..VW()
   const canvasY = ey + VH()/2;       // 0..VH()
-  mouseV.x=(canvasX/VW())*2-1;
+  mouseV.x=-((canvasX/VW())*2-1);   // v75 TEST : signe inversé (picking en miroir X confirmé sonde)
   mouseV.y=-((canvasY/VH())*2-1);
 }
 function pieceAt(cx,cy){ setNDC(cx,cy); raycaster.setFromCamera(mouseV,camera);
