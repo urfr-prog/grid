@@ -2366,7 +2366,9 @@ function refreshZoom(boardIdx){
   const z=Math.max(needZw,needZh);
   zoomSoloZ=z;                                 // échelle voulue par CE système seul
   targetCamZ=(coordZ!=null)?coordZ:z;          // suit l'échelle commune si coordonné
-  targetCamY=0;                                // centré verticalement
+  targetCamY=baseFitY;                         // v75 TEST : suivre le décalage vertical de fitCamera
+                                               // (zones réservées haut/bas). targetCamY=0 le ré-annulait,
+                                               // créant un flottement Y ~1u en paysage → picking 1 rangée trop haut.
   targetCamX=-PIVOT_X+coordYShift;             // v75 FIX : la grille est centrée sur -PIVOT_X (axe col3/4).
                                                // refreshZoom posait 0 → décalage 1.5u, invisible en portrait
                                                // mais énorme en paysage (asp 1.87) → picking ratait 9/10.
