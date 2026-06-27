@@ -1569,7 +1569,8 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
 }
 canvas.addEventListener('pointerdown',e=>{
   window._mv=0;
-  const _p=document.getElementById('probe75'); if(_p) _p.textContent='down LX='+Math.round(LX(e))+' LY='+Math.round(LY(e));
+  const r=SYS_ROOT.getBoundingClientRect();
+  const _p=document.getElementById('probe75'); if(_p) _p.textContent='down cl='+Math.round(e.clientX)+','+Math.round(e.clientY)+' rect='+Math.round(r.width)+'x'+Math.round(r.height)+' VWH='+VW()+'x'+VH()+' cv='+Math.round(canvas.getBoundingClientRect().width)+'x'+Math.round(canvas.getBoundingClientRect().height);
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
@@ -2370,6 +2371,10 @@ function refreshZoom(boardIdx){
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); fitCamera();
 window.addEventListener('resize',fitCamera);
+// v75 : iOS recale les dimensions APRÈS l'event orientationchange → on rejoue fitCamera en différé
+// (sinon en paysage le canvas/rect gardent l'état portrait → picking vise hors grille → "ne répond pas").
+window.addEventListener('orientationchange',()=>{ fitCamera(); setTimeout(fitCamera,150); setTimeout(fitCamera,400); });
+if(window.visualViewport){ window.visualViewport.addEventListener('resize',fitCamera); }
 
 // ─── v60a : FONDATION FACTORY (palier mini, iso-v5) ──────────────────────────
 //  Étape préparatoire au split-screen indépendant. On enveloppe l'état PAR-SYSTÈME
