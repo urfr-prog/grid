@@ -1571,7 +1571,7 @@ canvas.addEventListener('pointerdown',e=>{
   window._mv=0;
   const _p=document.getElementById('probe75'); if(_p) _p.textContent='down LX='+Math.round(LX(e))+' LY='+Math.round(LY(e));
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
-  if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
+  if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
   if(B.isAnimating||swapAnim||migrating)return;
   if(B.busy && !rotAnim)return;
@@ -1579,14 +1579,14 @@ canvas.addEventListener('pointerdown',e=>{
   if(!dragPiece){
     // VIDE (hors pièce) : on arme un swipe horizontal → navigation plateau. Grande zone tactile.
     if(!B.isAnimating&&!swapAnim&&!migrating&&!(B.busy&&!rotAnim)){
-      navSwipeX=LX(e); navSwipeY=LY(e); navSwipeT=Date.now(); canvas.setPointerCapture(e.pointerId);
+      navSwipeX=LX(e); navSwipeY=LY(e); navSwipeT=Date.now();
     }
     return;
   }
   downX=LX(e); downY=LY(e); downT=Date.now(); moved=false;
   dragging=true; dragAxis=null;
   const i=curBoard().indexOf(dragPiece); dragRow=rowOf(i); dragCol=colOf(i);
-  canvas.setPointerCapture(e.pointerId);
+  // v75 : setPointerCapture retiré — sur iOS il échoue avec la transform CSS du canvas et bloque les pointermove.
   // LONG PRESS : armer le verrouillage (annulé dès qu'on bouge ou qu'on relâche tôt)
   const tgt=dragPiece;
   if(!rotAnim && !isPorteIdx(i) && !tgt.target){
