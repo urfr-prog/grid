@@ -1569,7 +1569,9 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
 }
 canvas.addEventListener('pointerdown',e=>{
   window._mv=0;
-  const _p=document.getElementById('probe75'); if(_p) _p.textContent='down';
+  let _n=0; curBoard().forEach(p=>{ if(p&&p.mesh&&p.mesh.visible)p.mesh.traverse(c=>{if(c.isMesh)_n++;}); });
+  const _hit=pieceAt(e.clientX,e.clientY);
+  const _p=document.getElementById('probe75'); if(_p) _p.textContent='down hit='+(_hit?'OUI':'non')+' meshes='+_n+' ndc='+mouseV.x.toFixed(2)+','+mouseV.y.toFixed(2);
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
