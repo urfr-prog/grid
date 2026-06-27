@@ -450,7 +450,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const COLS=5, ROWS=4, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
+const COLS=4, ROWS=5, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 // ─── v49 : SECOND LAYER (bridage) ────────────────────────────────────────────
 //  Un plan jumeau en PROFONDEUR derrière chaque face du cube. La rotation cube
 //  change la FACE ; le swipe vertical 2 doigts change le LAYER actif. Deux
@@ -849,8 +849,8 @@ cubeGroup.position.set(0,0,-RADIUS);
 // bien que la colonne-pivot de la grille retombe sur l'axe Y du cube. On recentre ensuite à
 // l'écran par un offset caméra X (PIVOT_X * échelle world) — la grille reste visuellement
 // centrée mais bascule autour de col3/4. Le pivot domino/slide/fusion est inchangé (repère grille).
-const PIVOT_COL=3.5;                                  // entre col index 3 et 4
-const PIVOT_X=(PIVOT_COL-(COLS-1)/2)*CELL_W;          // = (3.5-2)*1 = 1.5 en repère grille
+const PIVOT_COL=2.5;                                  // entre col index 2 et 3 (4 colonnes)
+const PIVOT_X=(PIVOT_COL-(COLS-1)/2)*CELL_W;          // = (2.5-1.5)*1 = 1.0 en repère grille
 const faceGroups=[];                                  // repère grille plat — indexé bankKey(layer,face,bank)
 const faceMounts=[];                                  // pivots tangents au cylindre (azimut)
 const BANK_GAP = FACE_W + 1.0;                        // écart horizontal entre bancs (provisoire)
@@ -1610,12 +1610,12 @@ canvas.addEventListener('pointermove',e=>{
   if(dragAxis===null){
     if(rotAnim) return;   // rotation en cours : on n'initie pas de glissement (seul le tap empile)
     if(Math.abs(dx)>10||Math.abs(dy)>10){
-      dragAxis=Math.abs(dx)>Math.abs(dy)?'vertical':'horizontal';
+      dragAxis=Math.abs(dx)>Math.abs(dy)?'horizontal':'vertical';
       startSlide(dragAxis,dragRow,dragCol);
     } else return;
   }
-  if(dragAxis==='horizontal') applySlide(pxToWorldV(dy));
-  else applySlide(pxToWorld(dx));
+  if(dragAxis==='horizontal') applySlide(pxToWorld(dx));
+  else applySlide(pxToWorldV(dy));
 });
 canvas.addEventListener('pointerup',e=>{
   clearTimeout(pressTimer);
