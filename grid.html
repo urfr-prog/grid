@@ -431,6 +431,7 @@
   <div id="stage">
   <div id="sysA" class="sys">
   <canvas id="c"></canvas>
+  <div id="probe75" style="position:absolute;top:env(safe-area-inset-top,4px);left:8px;z-index:9999;font:10px/1.4 monospace;color:#5fd;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:4px;pointer-events:none;white-space:pre">sonde v75</div>
   <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
@@ -1567,6 +1568,16 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
   showToast(B.currentLayer===0?'Plan avant':'Plan arrière');
 }
 canvas.addEventListener('pointerdown',e=>{
+  // ── SONDE v75 : impact rayon vs pièces ──
+  (function(){
+    setNDC(e.clientX,e.clientY); raycaster.setFromCamera(mouseV,camera);
+    const g=gridMeshes[boardKey(B.currentLayer,B.currentBoard)];
+    let impact='—';
+    if(g){ const hit=raycaster.intersectObject(g,false); if(hit.length){ const lp=g.worldToLocal(hit[0].point.clone()); impact=lp.x.toFixed(2)+','+lp.y.toFixed(2); } }
+    let near='—',nd=1e9; curBoard().forEach(p=>{ if(p&&p.mesh&&p.mesh.visible){ const d=Math.abs(p.mesh.position.x-(g?g.worldToLocal(raycaster.ray.origin.clone()).x:0)); if(d<nd){nd=d; near=p.mesh.position.x.toFixed(2)+','+p.mesh.position.y.toFixed(2);} } });
+    const cr=canvas.getBoundingClientRect();
+    const _p=document.getElementById('probe75'); if(_p) _p.textContent='impact='+impact+' nearPiece='+near+' css='+Math.round(cr.width)+'x'+Math.round(cr.height)+' VWH='+VW()+'x'+VH()+' dpr='+window.devicePixelRatio;
+  })();
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
