@@ -1568,14 +1568,15 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
   showToast(B.currentLayer===0?'Plan avant':'Plan arrière');
 }
 canvas.addEventListener('pointerdown',e=>{
-  // ── SONDE v75 : le doigt fait-il bouger l'impact ? ──
+  // ── SONDE v75 : positions réelles des pièces vs impact ──
   (function(){
-    const r=SYS_ROOT.getBoundingClientRect();
     setNDC(e.clientX,e.clientY); raycaster.setFromCamera(mouseV,camera);
     const g=gridMeshes[boardKey(B.currentLayer,B.currentBoard)];
     let impact='—';
-    if(g){ const hit=raycaster.intersectObject(g,false); if(hit.length){ const lp=g.worldToLocal(hit[0].point.clone()); impact=lp.x.toFixed(2)+','+lp.y.toFixed(2); } }
-    const _p=document.getElementById('probe75'); if(_p) _p.textContent='cl='+Math.round(e.clientX)+','+Math.round(e.clientY)+' rL='+Math.round(r.left)+' rT='+Math.round(r.top)+' rW='+Math.round(r.width)+' ndc='+mouseV.x.toFixed(2)+','+mouseV.y.toFixed(2)+' imp='+impact;
+    if(g){ const hit=raycaster.intersectObject(g,false); if(hit.length){ const lp=g.worldToLocal(hit[0].point.clone()); impact=lp.x.toFixed(1)+','+lp.y.toFixed(1); } }
+    const cb=curBoard(); let cnt=0; let poss=[];
+    cb.forEach((p,i)=>{ if(p&&p.mesh){ cnt++; if(poss.length<6) poss.push(p.mesh.position.x.toFixed(1)+'/'+p.mesh.position.y.toFixed(1)); } });
+    const _p=document.getElementById('probe75'); if(_p) _p.textContent='imp='+impact+' nPieces='+cnt+' pos:'+poss.join(' ');
   })();
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; return; }
