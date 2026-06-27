@@ -820,6 +820,11 @@ const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setSize(VW(),VH(),false); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(42,VW()/VH(),0.1,200); scene.add(new THREE.AmbientLight(0xffffff,0.95));
+// v72 P1 : PAYSAGE. On roule la caméra de 90° (up = axe X monde) pour que les 5 colonnes
+// logiques s'affichent VERTICALEMENT et les 4 rangées HORIZONTALEMENT, iPhone tenu couché.
+// La logique de jeu reste à 0° ; seul le rendu est tourné. Le picking suit la caméra (raycaster),
+// donc reste calé sans transformation manuelle.
+camera.up.set(1,0,0);
 
 const FACE_W=COLS*CELL_W, FACE_H=ROWS*CELL_W, HALF=FACE_W/2, CAM_Z=11;
 const stackGroup=new THREE.Group(); scene.add(stackGroup);
@@ -1550,14 +1555,6 @@ canvas.addEventListener('pointerdown',e=>{
   if(B.isAnimating||swapAnim||migrating)return;
   if(B.busy && !rotAnim)return;
   dragPiece=pieceAt(e.clientX,e.clientY);
-  { let d=document.getElementById('DBG'); if(!d){d=document.createElement('div');d.id='DBG';d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#000e;color:#0f0;font:bold 13px monospace;padding:8px;white-space:pre;pointer-events:none';document.body.appendChild(d);} window.__d=d; window.__c=0;
-    const cr=canvas.getBoundingClientRect();
-    d.textContent='PIECE='+(!!dragPiece)
-      +'\\nVW='+VW()+' VH='+VH()
-      +'\\ncanvasStyle '+canvas.style.width+' x '+canvas.style.height
-      +'\\ncanvasRect W'+Math.round(cr.width)+' H'+Math.round(cr.height)+' L'+Math.round(cr.left)+' T'+Math.round(cr.top)
-      +'\\nwin '+window.innerWidth+'x'+window.innerHeight+' dpr'+window.devicePixelRatio
-      +'\\nclient='+Math.round(e.clientX)+','+Math.round(e.clientY)+' ndc='+mouseV.x.toFixed(2)+','+mouseV.y.toFixed(2); }
   if(!dragPiece){
     // VIDE (hors pièce) : on arme un swipe horizontal → navigation plateau. Grande zone tactile.
     if(!B.isAnimating&&!swapAnim&&!migrating&&!(B.busy&&!rotAnim)){
@@ -1577,7 +1574,6 @@ canvas.addEventListener('pointerdown',e=>{
   }
 });
 canvas.addEventListener('pointermove',e=>{
-  { const d=window.__d; if(d){ window.__c=(window.__c||0)+1; d.textContent='MOVE cnt='+window.__c+' dragging='+dragging+' axis='+dragAxis; } }
   if(!dragging)return;
   const dx=LX(e)-downX, dy=LY(e)-downY;
   if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
@@ -2277,32 +2273,26 @@ const clock=new THREE.Clock(); let last=0, tScaled=0;
 function fitCamera(){
   const w=VW(), h=VH(), aspect=w/h;
   renderer.setSize(w,h,false); camera.aspect=aspect;
-  // v60n5 : FIX iPhone notch. Le canvas est tourné -90°, donc sa LARGEUR CSS (avant rotation)
-  // doit valoir VW (=hauteur du sys) et sa HAUTEUR CSS valoir VH (=largeur du sys). On le force
-  // ici en pixels au lieu de 100vh/50vw, car 100vh inclut la safe-area (notch) que le .sys n'a
-  // pas → sinon affichage et rendu divergent et le picking part en vrille.
+  // v72 P1 : canvas = plein écran (plus de rotation CSS). Dimensions en pixels = VW×VH.
   canvas.style.width=w+'px'; canvas.style.height=h+'px';
   const vFOV=camera.fov*Math.PI/180;
-  // Comme prisme V11 : la grille occupe le maximum de largeur en ne laissant qu'un petit
-  // interstice de chaque côté (~10px). On cadre en PRIORITÉ sur la largeur.
-  const sidePx=10;                                         // interstice latéral souhaité
-  const marginW=(w+2*sidePx)/w;                            // largeur cible = écran - 2*interstice
-  const needW=(FACE_W*marginW)/(2*Math.tan(vFOV/2)*aspect);// distance pour remplir la largeur
-  // v34 : zones réservées en haut (barre nav) et en bas (boutons pouce). La grille se cale
-  // dans la bande centrale restante ; on recentre la caméra sur le milieu de cette bande.
-  const topPx=58, botPx=92;                                // hauteurs réservées (CSS ci-dessus)
+  // v72 P1 : la caméra est ROULÉE de 90° (up=X). Donc à l'écran :
+  //   • l'axe HORIZONTAL écran porte l'axe Y monde → cadre les 4 RANGÉES (FACE_H)
+  //   • l'axe VERTICAL écran porte l'axe X monde → cadre les 5 COLONNES (FACE_W)
+  // On cadre en PRIORITÉ sur la largeur (4 rangées bord à bord), garde-fou sur la hauteur.
+  const sidePx=10;                                        // interstice latéral souhaité
+  const marginW=(w+2*sidePx)/w;
+  // largeur écran ↔ FACE_H (rangées) maintenant que la vue est tournée.
+  const needW=(FACE_H*marginW)/(2*Math.tan(vFOV/2)*aspect);
+  // hauteur écran ↔ FACE_W (colonnes). Marges réduites (UI en bas gérée au palier suivant).
+  const topPx=8, botPx=8;
   const usableH=Math.max(1,h-topPx-botPx);
-  const needH=(FACE_H*(h/usableH))/(2*Math.tan(vFOV/2));   // garde-fou hauteur sur la zone utile
+  const needH=(FACE_W*(h/usableH))/(2*Math.tan(vFOV/2));
   camera.position.z=Math.max(needW,needH);
-  // décalage vertical : le centre de la zone utile n'est pas le centre écran.
-  const centerShiftPx=(botPx-topPx)/2;                     // >0 si plus réservé en bas → viser plus haut
+  const centerShiftPx=(botPx-topPx)/2;
   const worldPerPx=(2*camera.position.z*Math.tan(vFOV/2))/h;
   const offY=centerShiftPx*worldPerPx;
-  // v36 : la face courante a son contenu décalé de -PIVOT_X (axe de rotation sur col3/4).
-  // On recentre la grille à l'écran en visant X=-PIVOT_X (la grille reste centrée de face,
-  // mais bascule autour de col3/4 lors de la rotation cube).
   const offX=-PIVOT_X;
-  // v36 : mémorise le cadrage PLEIN (toute la grille) comme borne large du zoom.
   baseFitZ=camera.position.z; baseFitY=offY; baseWorldPerPx=worldPerPx; vFOVcache=vFOV;
   camera.position.set(offX,offY,camera.position.z); camera.lookAt(offX,offY,0);
   camera.updateProjectionMatrix();
@@ -2336,8 +2326,9 @@ function refreshZoom(boardIdx){
   const exMinY=Math.min(-FACE_H/2, n?minY:Infinity), exMaxY=Math.max(FACE_H/2, n?maxY:-Infinity);
   const padW=(exMaxX-exMinX)+2.0*CELL_W, padH=(exMaxY-exMinY)+2.0*CELL_W;
   const aspect=VW()/VH();
-  const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
-  const needZh=padH/(2*Math.tan(vFOVcache/2));
+  // v72 P1 : caméra roulée 90° → largeur écran porte l'axe Y (padH), hauteur écran porte l'axe X (padW).
+  const needZw=padH/(2*Math.tan(vFOVcache/2)*aspect);
+  const needZh=padW/(2*Math.tan(vFOVcache/2));
   const z=Math.max(needZw,needZh);
   zoomSoloZ=z;                                 // échelle voulue par CE système seul
   targetCamZ=(coordZ!=null)?coordZ:z;          // suit l'échelle commune si coordonné
