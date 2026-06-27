@@ -31,27 +31,15 @@ for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){ const d=document.createElement('
 // gère la transformation hit-test. On l'utilise comme RÉFÉRENCE de vérité.
 stage.addEventListener('pointerdown', e=>{
   document.querySelectorAll('.cell.hit').forEach(x=>x.classList.remove('hit'));
-  // 1) Vérité navigateur : quelle cellule est réellement sous le doigt
+  // VÉRITÉ NAVIGATEUR PURE : la cellule réellement sous le doigt. Le navigateur gère la
+  // rotation CSS tout seul. On allume directement cette cellule, sans aucun calcul manuel.
   const el=document.elementFromPoint(e.clientX,e.clientY);
-  // 2) Notre calcul manuel : retransformer clientX/clientY → coord layout du grid
-  const gr=grid.getBoundingClientRect();   // rect APRÈS rotation (boîte englobante écran)
-  // centre du grid à l'écran
-  const cx=gr.left+gr.width/2, cy=gr.top+gr.height/2;
-  // vecteur depuis le centre, en repère écran
-  const ex=e.clientX-cx, ey=e.clientY-cy;
-  // rotation inverse de +90° (annule le rotate(90deg)) : (x,y) -> (y,-x)
-  const lx=ey, ly=-ex;
-  // dimensions LAYOUT du grid (non tournées) = hauteur/largeur de la boîte écran échangées
-  const lw=gr.height, lh=gr.width;
-  // coordonnée normalisée 0..1 dans le repère layout
-  const u=(lx+lw/2)/lw, v=(ly+lh/2)/lh;
-  const col=Math.floor(u*COLS), row=Math.floor(v*ROWS);
-  // marque la cellule calculée
-  const calc=grid.querySelector('.cell[data-c="'+col+'"][data-r="'+row+'"]');
-  if(calc) calc.classList.add('hit');
-  dbg.textContent='navigateur='+(el&&el.classList.contains('cell')?el.textContent:'?')
-    +'  calcul='+col+','+row
-    +'  '+((el&&el.textContent===col+','+row)?'✓ MATCH':'✗ DECALE');
+  if(el && el.classList.contains('cell')){
+    el.classList.add('hit');
+    dbg.textContent='touch\u00e9 = case '+el.textContent+'  (doit \u00eatre pile sous ton doigt)';
+  } else {
+    dbg.textContent='hors grille';
+  }
 });
 </script>
 </body></html>
