@@ -399,7 +399,7 @@
   .sys { position:relative; flex:1 1 100%; width:100%; height:100%; overflow:hidden; }
   /* canvas : dimensions SWAPPÉES posées en PIXELS par fitCamera (= VW×VH), pas en 100vh/50vw
      qui incluent la safe-area iPhone et désalignent rendu/affichage. */
-  .sys #c { position:absolute; top:50%; left:50%;
+  .sys #c { position:absolute; top:50%; left:50%; touch-action:none;
             transform:translate(-50%,-50%); transform-origin:center center; }
   /* UI scopée au demi-écran : ce qui était fixed/left:50% devient absolute dans le .sys.
      v60m : la .nav-bar est EXCLUE ici → elle reste fixed, empilée dans la colonne gauche. */
@@ -1568,6 +1568,7 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
   showToast(B.currentLayer===0?'Plan avant':'Plan arrière');
 }
 canvas.addEventListener('pointerdown',e=>{
+  window._mv=0;
   const _p=document.getElementById('probe75'); if(_p) _p.textContent='down LX='+Math.round(LX(e))+' LY='+Math.round(LY(e));
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
@@ -1596,7 +1597,8 @@ canvas.addEventListener('pointerdown',e=>{
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
   const dx=LX(e)-downX, dy=LY(e)-downY;
-  const _p=document.getElementById('probe75'); if(_p) _p.textContent='dx='+Math.round(dx)+' dy='+Math.round(dy)+' axe='+(dragAxis||'-');
+  window._mv=(window._mv||0)+1;
+  const _p=document.getElementById('probe75'); if(_p) _p.textContent='mv#'+window._mv+' dx='+Math.round(dx)+' dy='+Math.round(dy)+' axe='+(dragAxis||'-');
   if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
   if(lockedPiece) return;   // pièce flottante : pas de slide ; le swipe est traité au pointerup (nav)
   if(dragAxis===null){
@@ -1644,11 +1646,10 @@ canvas.addEventListener('pointerup',e=>{
   if(dragAxis){ commitSlide(); }
   dragPiece=null;
 });
-canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; refreshZoom(); } dragPiece=null; });
+canvas.addEventListener('pointercancel',()=>{ const _p=document.getElementById('probe75'); if(_p) _p.textContent='CANCEL après mv#'+(window._mv||0); clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; refreshZoom(); } dragPiece=null; });
 // v60n : FIX TACTILE iOS. Sur un canvas tourné -90°, Safari interprète mal touch-action et
 // déclenche un scroll natif → pointercancel → le slide ne démarre jamais. On bloque le scroll
 // natif sur le canvas pendant le geste (listener NON passif, sinon preventDefault est ignoré).
-canvas.addEventListener('touchstart',e=>{ e.preventDefault(); }, {passive:false}); // v75 iOS : empêche scroll/zoom natif de voler le geste avant pointerdown
 canvas.addEventListener('touchmove',e=>{ e.preventDefault(); }, {passive:false});
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
   const sp=wp.clone().project(camera); return (sp.x*0.5+0.5)*VW(); }
