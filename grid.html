@@ -1601,7 +1601,9 @@ canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
   const dx=LX(e)-downX, dy=LY(e)-downY;
   window._mv=(window._mv||0)+1;
-  const _p=document.getElementById('probe75'); if(_p) _p.textContent='mv#'+window._mv+' dx='+Math.round(dx)+' dy='+Math.round(dy)+' axe='+(dragAxis||'-');
+  const _p=document.getElementById('probe75');
+  if(_p){ const _m=dragMembers&&dragMembers[0]; const _pos=_m?(_m.p.mesh.position.x.toFixed(2)+','+_m.p.mesh.position.y.toFixed(2)):'—';
+    _p.textContent='mv#'+window._mv+' dx='+Math.round(dx)+' dy='+Math.round(dy)+' axe='+(dragAxis||'-')+' sld='+sliding+' pos='+_pos; }
   if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
   if(lockedPiece) return;   // pièce flottante : pas de slide ; le swipe est traité au pointerup (nav)
   if(dragAxis===null){
