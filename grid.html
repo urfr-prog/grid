@@ -431,6 +431,7 @@
   <div id="stage">
   <div id="sysA" class="sys">
   <canvas id="c"></canvas>
+  <div id="probe75" style="position:absolute;top:env(safe-area-inset-top,4px);left:8px;z-index:9999;font:11px/1.4 monospace;color:#5fd;background:rgba(0,0,0,.55);padding:3px 6px;border-radius:4px;pointer-events:none;white-space:pre">sonde v75</div>
   <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
@@ -1546,8 +1547,10 @@ function dropPiece(cx,cy){
 let downX=0,downY=0,downT=0,moved=false;
 // v59 : deltas de geste dans le repère redressé (-90°).
 // v60n2 : recalés sur le .sys (SYS_ROOT non tourné) → cohérent pour sysA ET sysB.
-function LX(e){ const r=SYS_ROOT.getBoundingClientRect(); return e.clientY-r.top; }
-function LY(e){ const r=SYS_ROOT.getBoundingClientRect(); return VH()-(e.clientX-r.left); }
+// v75 : repère DIRECT, aligné sur setNDC (le picking). L'ancien mapping -90° (héritage v59)
+// contredisait setNDC passé en 0° au v64 → slides de travers sur device. Sens à valider iPhone.
+function LX(e){ const r=SYS_ROOT.getBoundingClientRect(); return e.clientX-r.left; }
+function LY(e){ const r=SYS_ROOT.getBoundingClientRect(); return e.clientY-r.top; }
 let navSwipeX=null,navSwipeY=null,navSwipeT=0;   // swipe-nav depuis le vide (grande zone tactile)
 // ─── v50 : BASCULE DE LAYER (swipe vertical 1 doigt depuis le VIDE) ───────────
 //  Réutilise le canal navSwipe (geste armé hors domino). Swipe vertical ample =
@@ -1565,6 +1568,7 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
   showToast(B.currentLayer===0?'Plan avant':'Plan arrière');
 }
 canvas.addEventListener('pointerdown',e=>{
+  const _p=document.getElementById('probe75'); if(_p) _p.textContent='down LX='+Math.round(LX(e))+' LY='+Math.round(LY(e));
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; canvas.setPointerCapture(e.pointerId); return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
@@ -1592,6 +1596,7 @@ canvas.addEventListener('pointerdown',e=>{
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
   const dx=LX(e)-downX, dy=LY(e)-downY;
+  const _p=document.getElementById('probe75'); if(_p) _p.textContent='dx='+Math.round(dx)+' dy='+Math.round(dy)+' axe='+(dragAxis||'-');
   if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
   if(lockedPiece) return;   // pièce flottante : pas de slide ; le swipe est traité au pointerup (nav)
   if(dragAxis===null){
@@ -1643,6 +1648,7 @@ canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipe
 // v60n : FIX TACTILE iOS. Sur un canvas tourné -90°, Safari interprète mal touch-action et
 // déclenche un scroll natif → pointercancel → le slide ne démarre jamais. On bloque le scroll
 // natif sur le canvas pendant le geste (listener NON passif, sinon preventDefault est ignoré).
+canvas.addEventListener('touchstart',e=>{ e.preventDefault(); }, {passive:false}); // v75 iOS : empêche scroll/zoom natif de voler le geste avant pointerdown
 canvas.addEventListener('touchmove',e=>{ e.preventDefault(); }, {passive:false});
 function screenXOf(mesh){ const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
   const sp=wp.clone().project(camera); return (sp.x*0.5+0.5)*VW(); }
