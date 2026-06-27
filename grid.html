@@ -1569,8 +1569,7 @@ function switchLayer(dir){   // dir = +1 (vers l'arrière) / -1 (vers l'avant)
 }
 canvas.addEventListener('pointerdown',e=>{
   window._mv=0;
-  const r=SYS_ROOT.getBoundingClientRect();
-  const _p=document.getElementById('probe75'); if(_p) _p.textContent='down cl='+Math.round(e.clientX)+','+Math.round(e.clientY)+' rect='+Math.round(r.width)+'x'+Math.round(r.height)+' VWH='+VW()+'x'+VH()+' cv='+Math.round(canvas.getBoundingClientRect().width)+'x'+Math.round(canvas.getBoundingClientRect().height);
+  const _p=document.getElementById('probe75'); if(_p) _p.textContent='down';
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; return; }
   // une rotation en cours ne bloque PAS la capture : on veut pouvoir empiler un clic.
@@ -2363,11 +2362,8 @@ function refreshZoom(boardIdx){
   targetCamZ=(coordZ!=null)?coordZ:z;          // suit l'échelle commune si coordonné
   targetCamY=0;                                // centré verticalement
   targetCamX=coordYShift;                      // v68 : à 0° le rapprochement des 2 côtés est sur X
-  // v74 TEST : englober les DEUX bancs. Centrer entre banc 0 (x=0) et banc 1 (x=BANK_GAP),
-  // reculer pour cadrer la largeur totale (2 grilles + écart). Bloc à retirer après le test.
-  const totalW = BANK_GAP + FACE_W + 2.0*CELL_W;
-  targetCamZ = Math.max(targetCamZ, totalW/(2*Math.tan(vFOVcache/2)*aspect));
-  targetCamX = BANK_GAP/2 - PIVOT_X;           // milieu des deux bancs
+  // v75 : bloc test 2-bancs RETIRÉ — il reculait la caméra sur BANK_GAP+2 grilles et décalait
+  // le centre, ce qui éjectait les pièces dans un coin en paysage. Cadrage mono-banc rétabli.
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); fitCamera();
 window.addEventListener('resize',fitCamera);
