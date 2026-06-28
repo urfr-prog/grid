@@ -394,12 +394,7 @@
      #stage couvre l'écran et pose les deux .sys côte à côte (gauche|droite).
      Chaque .sys est un demi-écran autonome ; ses éléments UI passent en
      position:absolute (relatifs au .sys) au lieu de fixed (viewport). */
-  /* v86 P1 : ancrage sur le viewport PHYSIQUE réel. inset:0 se calait sur la zone sûre
-     en paysage iOS → #stage (et tout son contenu) poussé ~59px vers le bas (mesuré device :
-     stage rect @0,59). On force top/left:0 + dimensions viewport pleines, safe-area ignorée
-     pour ce conteneur. La grille se recentre et le menu (calé sur bottom) rentre dans l'écran. */
-  #stage { position:fixed; top:0; left:0; width:100vw; height:100vh; display:flex; }
-  @supports (height:100dvh){ #stage{ width:100dvw; height:100dvh; } }
+  #stage { position:fixed; inset:0; display:flex; }
   /* v70 R2 : un seul .sys → plein écran (flex:1 occupe tout #stage). */
   .sys { position:relative; flex:1 1 100%; width:100%; height:100%; overflow:hidden; }
   /* canvas : dimensions SWAPPÉES posées en PIXELS par fitCamera (= VW×VH), pas en 100vh/50vw
@@ -2821,44 +2816,55 @@ const SYSTEMS = [sysA];
 
 </script>
 
-<!-- ===== SONDE DIAGNOSTIC PAYSAGE — lecture seule, autonome, à retirer après diag ===== -->
+<!-- ===== SONDE DIAGNOSTIC PAYSAGE — lecture seule + tests réversibles ===== -->
 <div id="probeLAND" style="position:fixed;left:50%;bottom:120px;transform:translateX(-50%);
   z-index:99999;font:11px/1.5 monospace;color:#9fe;background:rgba(0,0,0,.82);
   padding:8px 12px;border-radius:6px;pointer-events:none;white-space:pre;text-align:left;
   border:1px solid #2a4">sonde paysage…</div>
+<!-- boutons de test : appliquent un correctif candidat sur #stage, réversible -->
+<div id="probeBtns" style="position:fixed;left:50%;bottom:60px;transform:translateX(-50%);
+  z-index:99999;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:90vw">
+</div>
 <script>
 (function(){
   function fmt(n){ return (n==null?'—':Math.round(n)); }
+
+  var stage = document.getElementById('stage');
+  // mémorise l'état d'origine de #stage pour pouvoir tout annuler
+  var orig = stage ? stage.getAttribute('style') : '';
+
+  // — correctifs candidats : chacun force #stage différemment —
+  var tests = {
+    'RESET'      : function(){ stage.setAttribute('style', orig||''); },
+    'T1 fixed0'  : function(){ stage.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;display:flex;'; },
+    'T2 0,0+px'  : function(){ stage.style.cssText='position:fixed;top:0;left:0;width:'+window.innerWidth+'px;height:'+window.innerHeight+'px;display:flex;'; },
+    'T3 absolute': function(){ document.body.style.display='block'; stage.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;display:flex;'; },
+    'T4 body0'   : function(){ document.body.style.cssText='background:#000;margin:0;padding:0;overflow:hidden;'; stage.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;display:flex;'; }
+  };
+  var btnHost=document.getElementById('probeBtns');
+  Object.keys(tests).forEach(function(name){
+    var b=document.createElement('button');
+    b.textContent=name;
+    b.style.cssText='font:11px monospace;padding:6px 9px;border-radius:8px;border:1px solid #2a6;'+
+      'background:rgba(10,30,20,.9);color:#9fe;';
+    b.addEventListener('click',function(){ tests[name](); });
+    btnHost.appendChild(b);
+  });
+
   function tick(){
     var box = document.getElementById('probeLAND'); if(!box) return;
     var sys  = document.getElementById('sysA');
-    var bar  = document.getElementById('commonBar');
     var mTog = document.getElementById('menuToggle');
 
     var iW = window.innerWidth, iH = window.innerHeight;
     var orient = iW>=iH ? 'PAYSAGE' : 'portrait';
 
-    // v2 : les 3 hauteurs iOS qui peuvent diverger après orientationchange
-    var deH = document.documentElement.clientHeight;
-    var vvH = window.visualViewport ? Math.round(window.visualViewport.height) : null;
-    // si deH (ou stage) > iH → le layout déborde sous l'écran visible = source des 59px
+    var bodyR = document.body.getBoundingClientRect();
+    var bScroll = document.body.scrollTop || document.documentElement.scrollTop || 0;
 
-    // ce que le moteur croit (VW/VH = clientW/H du .sys)
-    var sW = sys ? sys.clientWidth  : null;
-    var sH = sys ? sys.clientHeight : null;
-    var sysAspect = (sW&&sH) ? (sW/sH).toFixed(2) : '—';
-    var winAspect = (iH) ? (iW/iH).toFixed(2) : '—';
-
-    // rects des conteneurs : si stage/sys débordent en bas, tout fixed:bottom tombe hors écran
-    var stg = document.getElementById('stage');
-    var sr  = stg ? stg.getBoundingClientRect() : null;
-    var syr = sys ? sys.getBoundingClientRect() : null;
-
-    // le canvas réel
+    var sr  = stage ? stage.getBoundingClientRect() : null;
     var cv = sys ? sys.querySelector('#c') : null;
     var cr = cv ? cv.getBoundingClientRect() : null;
-
-    // le bouton menu : est-il dans l'écran, et est-il LUI qui reçoit le tap en son centre ?
     var br = mTog ? mTog.getBoundingClientRect() : null;
     var hit = '—';
     if(br){
@@ -2866,25 +2872,20 @@ const SYSTEMS = [sysA];
       var el = document.elementFromPoint(cx, cy);
       hit = el ? (el.id || el.tagName) : 'null';
     }
-    var belowScreen = (br && br.top >= iH) ? '  ⚠HORS-ÉCRAN' : '';
-    var barHidden = bar ? bar.classList.contains('hidden') : '—';
+    var belowScreen = (br && br.top >= iH) ? '  ⚠HORS' : '';
 
     box.textContent =
       orient+'  win '+iW+'x'+iH+'\n'+
-      'H: innerH '+iH+'  docElH '+deH+'  vvH '+(vvH==null?'—':vvH)+
-        ((deH>iH||(vvH&&vvH>iH))?'  ⚠LAYOUT>ÉCRAN':'')+'\n'+
-      'stage rect '+(sr?fmt(sr.width)+'x'+fmt(sr.height):'—')+
-        ' @'+(sr?fmt(sr.left)+','+fmt(sr.top):'—')+'\n'+
-      'sys rect '+(syr?fmt(syr.width)+'x'+fmt(syr.height):'—')+
-        ' @'+(syr?fmt(syr.left)+','+fmt(syr.top):'—')+'\n'+
-      'canvas rect '+(cr?fmt(cr.width)+'x'+fmt(cr.height):'—')+
-        ' @'+(cr?fmt(cr.left)+','+fmt(cr.top):'—')+'\n'+
-      'menuBtn @'+(br?fmt(br.left)+','+fmt(br.top):'—')+belowScreen+'\n'+
-      'menuBtn EFP = '+hit+
-        ((hit!=='menuToggle'&&hit!=='—')?'  ⚠VOLÉ/HORS':'  ✓')+
-      '  hidden='+barHidden;
+      'body rect @'+fmt(bodyR.left)+','+fmt(bodyR.top)+
+        '  h '+fmt(bodyR.height)+'  scroll '+fmt(bScroll)+'\n'+
+      'STAGE rect '+(sr?fmt(sr.width)+'x'+fmt(sr.height):'—')+
+        ' @'+(sr?fmt(sr.left)+','+fmt(sr.top):'—')+
+        ((sr&&Math.round(sr.top)===0)?'  ✓@0':'  ⚠décalé')+'\n'+
+      'canvas @'+(cr?fmt(cr.left)+','+fmt(cr.top):'—')+
+        '   menuBtn @'+(br?fmt(br.left)+','+fmt(br.top):'—')+belowScreen+'\n'+
+      'menuBtn EFP = '+hit+((hit!=='menuToggle'&&hit!=='—')?'  ⚠':'  ✓');
   }
-  setInterval(tick, 300);
+  setInterval(tick, 250);
 })();
 </script>
 </body>
