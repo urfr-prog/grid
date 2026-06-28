@@ -423,6 +423,47 @@
     color:rgba(180,200,220,0.9); }
   #slowmoG input[type=range]{ writing-mode:vertical-lr; direction:rtl; width:auto; height:96px; accent-color:#22d3ee; }
   #tsLabelG { min-width:0 !important; }
+  /* v82 : CROIX DE CONSTRUCTION — repère fixe au MILIEU GÉOMÉTRIQUE de l'écran.
+     Purement visuelle (pointer-events:none), on/off. Sert de juge d'alignement
+     et de future cible du zoom intelligent (tout doit venir se caler au milieu). */
+  #xhairH, #xhairV { position:fixed; z-index:350; pointer-events:none; display:none;
+    background:rgba(34,211,238,0.55); box-shadow:0 0 6px rgba(34,211,238,0.4); }
+  #xhairH { left:0; width:100vw; height:1px; top:50%; transform:translateY(-0.5px); }
+  #xhairV { top:0; height:100vh; width:1px; left:50%; transform:translateX(-0.5px); }
+  #xhairH.on, #xhairV.on { display:block; }
+  /* v82 : MENU EN BAS masquable. Quand .hidden, la barre coulisse vers le BAS. */
+  #commonBar { transition:transform 0.28s ease, opacity 0.28s ease; }
+  #commonBar.hidden { transform:translateX(-50%) translateY(140%); opacity:0; pointer-events:none; }
+  #menuToggle { position:fixed; left:calc(env(safe-area-inset-left,0px) + 6px);
+    top:calc(env(safe-area-inset-top,0px) + 6px); z-index:401;
+    width:40px; height:40px; border-radius:50%; background:rgba(22,23,38,0.85);
+    border:1px solid rgba(34,211,238,0.35); color:rgba(34,211,238,0.8); font-size:1.1rem; line-height:1;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit;
+    transition:all 0.2s; backdrop-filter:blur(4px); padding:0; }
+  #menuToggle:active { transform:scale(0.92); }
+  /* v82 : OVERLAY COORDONNÉES — labels B{banc} c{col} r{row} posés sur chaque domino visible.
+     Pool de divs repositionnés chaque frame ; purement visuel. */
+  #coordLayer { position:fixed; inset:0; z-index:340; pointer-events:none; display:none; }
+  #coordLayer.on { display:block; }
+  .coordTag { position:absolute; transform:translate(-50%,-50%);
+    font:bold 11px/1 'SF Mono',Menlo,monospace; color:#22d3ee;
+    text-shadow:0 0 3px #000,0 0 3px #000; white-space:nowrap; }
+  /* v82 : MENU REGROUPÉ EN BAS — barre horizontale (dots + boutons + slider + ☰). */
+  #commonBar { position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 10px); top:auto; z-index:400;
+    flex-direction:row; align-items:center; gap:12px;
+    background:rgba(13,17,23,0.55); padding:8px 14px; border-radius:24px; backdrop-filter:blur(6px); }
+  #commonBar.hidden { transform:translateX(-50%) translateY(140%); opacity:0; pointer-events:none; }
+  /* v82 : nav-bars intégrées DANS la barre du bas (flux horizontal normal). */
+  #commonBar .nav-bar { position:static; flex-direction:row; align-items:center; gap:6px;
+    background:none; padding:0; backdrop-filter:none; }
+  #commonBar .nav-bar .nav-dots { flex-direction:row; gap:9px; }
+  /* slowmo horizontal, slider ÉLARGI pour la précision (v82). */
+  #slowmoG { flex-direction:row; padding:6px 12px; align-items:center; gap:10px; }
+  #slowmoG input[type=range]{ writing-mode:horizontal-tb; direction:ltr; width:200px; height:auto; accent-color:#22d3ee; }
+  /* ☰ : bouton fixe en bas, hors barre → reste visible quand la barre est cachée */
+  #menuToggle { position:fixed; right:14px; bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
+    left:auto; top:auto; z-index:402; width:40px; height:40px; }
 </style>
 </head>
 <body>
@@ -432,12 +473,19 @@
   <div id="sysA" class="sys">
   <canvas id="c"></canvas>
   <div id="probe75" style="position:absolute;top:env(safe-area-inset-top,4px);left:8px;z-index:9999;font:10px/1.4 monospace;color:#5fd;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:4px;pointer-events:none;white-space:pre">sonde v75</div>
-  <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
+  <div id="probeIB" style="position:absolute;top:env(safe-area-inset-top,4px);right:8px;z-index:9999;font:10px/1.4 monospace;color:#fd5;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:4px;pointer-events:none;white-space:pre">inter-banc: —</div>
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
   </div><!-- /#sysA -->
-  <!-- v60k : BARRE DE CONTRÔLES COMMUNE (centrée en bas, chevauche les deux moitiés). -->
+  <!-- v82 : croix de construction (milieu géométrique écran) + overlay coordonnées -->
+  <div id="xhairH"></div>
+  <div id="xhairV"></div>
+  <div id="coordLayer"></div>
+  <!-- v82 : BARRE DE CONTRÔLES regroupée EN BAS. Dots banc0 à gauche, dots banc1 à droite. -->
   <div id="commonBar">
+    <div class="nav-bar" id="navBar"><span class="chev">‹</span><div class="nav-dots" id="navDots"></div><span class="chev">›</span></div>
+    <button id="coordBtn" class="opt-btn off" aria-label="Coordonnées">#</button>
+    <button id="xhairBtn" class="opt-btn off" aria-label="Croix de construction">✛</button>
     <button id="medBtnG" class="opt-btn" aria-label="Médianes">▤</button>
     <div id="slowmoG">
       <span style="opacity:0.7;">🐢</span>
@@ -445,7 +493,9 @@
       <span id="tsLabelG" style="text-align:center;font-variant-numeric:tabular-nums;">1.00×</span>
     </div>
     <button id="undoBtnG" class="undo-btn" aria-label="Annuler">↶</button>
+    <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
   </div>
+  <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -824,7 +874,12 @@ function VH(){ return Math.round(SYS_ROOT.clientHeight) || Math.round(window.inn
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setSize(VW(),VH(),false); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor(0x000000);
 const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera(42,VW()/VH(),0.1,200); scene.add(new THREE.AmbientLight(0xffffff,0.95));
+// v83 P1 : CAMÉRA ORTHOGRAPHIQUE (test). Supprime l'effet de perspective du carrousel : une
+//  face enfoncée en Z (cos(ang)·RADIUS) ne paraît PLUS plus petite → tailles inter-banc garanties.
+//  Frustum posé en unités-monde [-1,1] ; on pilote le cadrage par camera.zoom (calculé dans
+//  fitCamera), exactement comme le faisait camera.position.z en perspective. near/far larges
+//  pour englober tout le cylindre du carrousel (profondeur ±RADIUS autour de Z=0).
+const camera=new THREE.OrthographicCamera(-1,1,1,-1,0.1,200); scene.add(new THREE.AmbientLight(0xffffff,0.95));
 
 const FACE_W=COLS*CELL_W, FACE_H=ROWS*CELL_W, HALF=FACE_W/2, CAM_Z=11;
 // v73 P2-0 : MONDE COMMUN. worldGroup contient le(s) banc(s) ; sert au zoom/cadrage global et
@@ -1238,11 +1293,14 @@ function onRotationComplete(){ B.currentBoard=B.navTarget; B.navDir=0;
   B.spin.quaternion.copy(B.targetQuat); assignFaces(); hidePorteProxies(); B.isAnimating=false; B.busy=false; updateUI(); refreshZoom();
   setTimeout(checkFusions,100); }
 
-function updateUI(){ dotsEl.querySelectorAll('.nav-dot').forEach((d,i)=>{
-    const live = boardIsLive(i) || i===mod(B.currentBoard);   // on garde le dot courant visible
-    d.style.display = live ? '' : 'none';
-    d.classList.toggle('active',i===mod(B.currentBoard));
-  }); updateGoalTag(); }
+function updateUI(){
+  // v82 : chaque jeu de dots reflète le currentBoard de SON banc.
+  const paint=(host,bk)=>{ if(!host)return; const cur=mod(banks[bk].currentBoard);
+    host.querySelectorAll('.nav-dot').forEach((d,i)=>{
+      d.style.display = ''; d.classList.toggle('active',i===cur);
+    }); };
+  paint(dotsEl,0); paint(dotsEl1,1);
+  updateGoalTag(); }
 // Pastille "COMMANDE" : visible uniquement sur un plan à objectif-pièce.
 function updateGoalTag(){
   const el=$('goalTag'); const g=goalFor(mod(B.currentBoard));
@@ -1361,30 +1419,15 @@ function applySlide(off){
 // (et non les positions wrappées, qui feraient osciller le zoom). On simule la rangée/colonne
 // après application des crans et on mesure son emprise ; le zoom principal s'y adapte par palier.
 function refreshZoomSlide(){
-  const d=curBoard(); if(!d) return;
-  const steps=Math.round(dragOff/CELL);
-  // étendue de TOUT le plateau, en remplaçant la ligne/colonne glissée par sa version décalée.
-  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,n=0;
-  const acc=(col,row)=>{ const {x,y}=cellToLocal(col,row);
-    minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++; };
-  for(let i=0;i<TOTAL;i++){ const p=d[i]; if(!p)continue; let col=colOf(i),row=rowOf(i);
-    if(dragAxis==='horizontal' && row===dragRow){ col=((col+steps)%COLS+COLS)%COLS; }
-    else if(dragAxis==='vertical' && col===dragCol){ row=((row+steps)%ROWS+ROWS)%ROWS; }
-    acc(col,row);
-  }
-  // v56 : ZOOM COMMUN — inclure le(s) AUTRE(S) layer(s) à la même face (sans décalage : seul
-  // l'actif glisse). Même base de mesure que refreshZoom → plus de recul de zoom au lâcher.
-  for(let L=0;L<NLAYERS;L++){ if(L===B.currentLayer) continue; const da=boards[boardKey(L,B.currentBoard)]; if(!da)continue;
-    for(let i=0;i<TOTAL;i++){ if(!da[i])continue; acc(colOf(i),rowOf(i)); } }
-  if(n===0)return;
-  const padW=(maxX-minX)+2.0*CELL_W, padH=(maxY-minY)+2.0*CELL_W;
-  const aspect=VW()/VH();
-  const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
-  const needZh=padH/(2*Math.tan(vFOVcache/2));
-  const zMin=Math.max(baseFitZ*0.45, needZh);  // v43 : ne pas passer sous la contrainte hauteur (écran large)
-  targetCamZ=Math.min(baseFitZ, Math.max(zMin, Math.max(needZw,needZh)));
-  const cY=(minY+maxY)/2; targetCamY=baseFitY + cY*0.6;
-  const cX=(minX+maxX)/2; targetCamX=-PIVOT_X + cX;
+  // v82 : ZOOM GELÉ pendant le glissement aussi. L'ancienne logique mono-banc
+  //  (targetCamY=baseFitY+cY*0.6) désalignait les 2 bancs dès qu'on glissait une pièce.
+  //  On pose le MÊME cadrage fixe que refreshZoom → la caméra ne bouge plus en glissant,
+  //  les 2 bancs restent alignés sur la grille complète. À ré-évaluer une fois le contenu
+  //  4×5 rangé validé device (on verra alors si un resserrage commun est souhaitable).
+  zoomSoloZ=baseFitZ;
+  targetCamZ=baseFitZ;
+  targetCamY=baseFitY;
+  targetCamX=-PIVOT_X + ((BANKS>1)?BANK_GAP/2:0);
 }
 
 // fin de glissement : calcule le nombre de crans et réécrit la grille logique (wrap-around)
@@ -1676,10 +1719,13 @@ document.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight'){navRight();e.preventDefault();} else if(e.key==='ArrowLeft'){navLeft();e.preventDefault();} });
 // v60k : câblage undo/médianes retiré de la factory → géré par la barre de contrôles COMMUNE.
 updateUndoBtn();
-const dotsEl=$('navDots');
-for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>{ if(i!==mod(B.currentBoard)&&!B.busy&&!B.isAnimating){ if(mod(i-B.currentBoard)===NBOARDS-1)navLeft(); else navRight(); } }); dotsEl.appendChild(d); }
+const dotsEl=document.getElementById('navDots');
+for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>{ setActiveBank(0); if(i!==mod(B.currentBoard)&&!B.busy&&!B.isAnimating){ if(mod(i-B.currentBoard)===NBOARDS-1)navLeft(); else navRight(); } }); dotsEl.appendChild(d); }
+// v82 : SECOND JEU DE DOTS — banc 1 (droite). Clic force setActiveBank(1) avant de naviguer.
+const dotsEl1=document.getElementById('navDots1');
+for(let i=0;i<NBOARDS;i++){ const d=document.createElement('div'); d.className='nav-dot'+(i===0?' active':''); d.addEventListener('click',()=>{ setActiveBank(1); if(i!==mod(B.currentBoard)&&!B.busy&&!B.isAnimating){ if(mod(i-B.currentBoard)===NBOARDS-1)navLeft(); else navRight(); } }); dotsEl1.appendChild(d); }
 // SWIPE sur la BARRE entière (v34 : cible élargie, chevrons inclus) = changer de plateau.
-const navBarEl=$('navBar');
+const navBarEl=document.getElementById('navBar');
 let dotDownX=null, dotMoved=false;
 navBarEl.addEventListener('pointerdown',e=>{ dotDownX=e.clientX; dotMoved=false; navBarEl.setPointerCapture(e.pointerId); });
 navBarEl.addEventListener('pointermove',e=>{ if(dotDownX==null)return; if(Math.abs(e.clientX-dotDownX)>20){ dotMoved=true; } });
@@ -1701,6 +1747,35 @@ let _fuseScheduled=false;
 // ── BRIDAGE V44 (interrupteurs, rien supprimé) ──
 //   Voir déclaration en tête de script (TAP_ROTATION, PORTE_REFILL).
 //   Toutes les fusions (régresseur, chaîne, simple, twin) restent ACTIVES sur les 2 axes.
+
+// ── v83 P5-0 : DÉTECTION INTER-BANC (LECTURE SEULE, AUCUNE FUSION) ──
+//   L'adjacence inter-banc relie le BORD DROIT du banc 0 (colonne COLS-1, face exposée 'right')
+//   au BORD GAUCHE du banc 1 (colonne 0, face exposée 'left'), à row ÉGAL. C'est le miroir exact
+//   de l'adjacence horizontale interne de checkFusions, mais à cheval sur deux grilles.
+//   Cette fonction ne FAIT rien : elle DÉTECTE et renvoie les paires candidates pour la sonde.
+//   On accède au banc voisin par boards[bankKey(layer, board, bank)] : même layer + même board
+//   que le banc courant, seul l'index de banc change.
+function interBankPairs(){
+  if(BANKS<2) return [];
+  // On lit les DEUX grilles à la même profondeur (layer 0) et au même plateau (face 0).
+  //  P5-0 : on reste sur layer 0 / board 0 — le cas simple, validable à l'œil. La généralisation
+  //  (layer/board courants de chaque banc) viendra une fois la mécanique de base confirmée.
+  const g0 = boards[bankKey(0,0,0)];          // banc 0
+  const g1 = boards[bankKey(0,0,1)];          // banc 1
+  if(!g0||!g1) return [];
+  const out=[];
+  for(let row=0; row<ROWS; row++){
+    const i0 = row*COLS + (COLS-1);            // colonne de DROITE du banc 0
+    const i1 = row*COLS + 0;                   // colonne de GAUCHE du banc 1
+    const p0 = g0[i0], p1 = g1[i1];
+    if(!p0 || !p1) continue;                   // une case vide → pas de contact
+    if(p0.target || p1.target) continue;       // une cible ne fusionne pas
+    const fR = getExposedFace(p0,'right');     // icône exposée à droite du banc 0
+    const fL = getExposedFace(p1,'left');      // icône exposée à gauche du banc 1
+    if(fR && fL && fR===fL){ out.push({row, i0, i1, icon:fR}); }
+  }
+  return out;
+}
 
 function checkFusions(){
   // Si on est occupé (anim/nav/swap en cours), NE PAS abandonner : se redemander plus tard.
@@ -2311,81 +2386,67 @@ const clock=new THREE.Clock(); let last=0, tScaled=0;
 // Cadre la pile pour qu'elle tienne à l'écran quel que soit le format (portrait mobile inclus).
 function fitCamera(){
   const w=VW(), h=VH(), aspect=w/h;
-  renderer.setSize(w,h,false); camera.aspect=aspect;
-  // v60n5 : FIX iPhone notch. Le canvas est tourné -90°, donc sa LARGEUR CSS (avant rotation)
-  // doit valoir VW (=hauteur du sys) et sa HAUTEUR CSS valoir VH (=largeur du sys). On le force
-  // ici en pixels au lieu de 100vh/50vw, car 100vh inclut la safe-area (notch) que le .sys n'a
-  // pas → sinon affichage et rendu divergent et le picking part en vrille.
+  renderer.setSize(w,h,false);
+  // v60n5 : FIX iPhone notch (inchangé). Canvas tourné -90° → largeur CSS = VW, hauteur CSS = VH.
   canvas.style.width=w+'px'; canvas.style.height=h+'px';
-  const vFOV=camera.fov*Math.PI/180;
-  // Comme prisme V11 : la grille occupe le maximum de largeur en ne laissant qu'un petit
-  // interstice de chaque côté (~10px). On cadre en PRIORITÉ sur la largeur.
-  const sidePx=10;                                         // interstice latéral souhaité
+  // v83 P1 : ORTHO. Frustum fixe en unités-monde, hauteur visible = 2 (de -1 à +1), largeur = 2*aspect.
+  //  Le cadrage se fait ENSUITE par camera.zoom. On garde la même logique de besoin largeur/hauteur
+  //  qu'avant, mais traduite en facteur de zoom au lieu d'une distance Z perspective.
+  camera.left=-aspect; camera.right=aspect; camera.top=1; camera.bottom=-1;
+  const sidePx=10;                                         // interstice latéral souhaité (inchangé)
   const marginW=(w+2*sidePx)/w;                            // largeur cible = écran - 2*interstice
-  const spanW=(BANKS>1)?(BANK_GAP+FACE_W):FACE_W;          // v78 : 2 bancs côte à côte
-  const needW=(spanW*marginW)/(2*Math.tan(vFOV/2)*aspect); // distance pour remplir la largeur
-  // v34 : zones réservées en haut (barre nav) et en bas (boutons pouce). La grille se cale
-  // dans la bande centrale restante ; on recentre la caméra sur le milieu de cette bande.
-  const topPx=58, botPx=92;                                // hauteurs réservées (CSS ci-dessus)
+  const spanW=(BANKS>1)?(BANK_GAP+FACE_W):FACE_W;          // 2 bancs côte à côte (inchangé)
+  // largeur monde visible sans zoom = 2*aspect ; pour que (spanW*marginW) tienne dedans :
+  const zoomW=(2*aspect)/(spanW*marginW);
+  // garde-fou hauteur sur la zone utile (barre haut + boutons bas), inchangé en principe :
+  const topPx=58, botPx=92;
   const usableH=Math.max(1,h-topPx-botPx);
-  const needH=(FACE_H*(h/usableH))/(2*Math.tan(vFOV/2));   // garde-fou hauteur sur la zone utile
-  camera.position.z=Math.max(needW,needH);
-  // décalage vertical : le centre de la zone utile n'est pas le centre écran.
-  const centerShiftPx=(botPx-topPx)/2;                     // >0 si plus réservé en bas → viser plus haut
-  const worldPerPx=(2*camera.position.z*Math.tan(vFOV/2))/h;
+  // hauteur monde visible sans zoom = 2 ; pour que FACE_H tienne dans la bande utile :
+  const zoomH=2/(FACE_H*(h/usableH));
+  camera.zoom=Math.min(zoomW,zoomH);                       // le plus contraignant (= plein cadre)
+  // décalage vertical : centre zone utile ≠ centre écran. En ortho, worldPerPx = (hauteur monde)/h.
+  const worldPerPx=(2/camera.zoom)/h;
+  const centerShiftPx=(botPx-topPx)/2;
   const offY=centerShiftPx*worldPerPx;
-  // v36 : la face courante a son contenu décalé de -PIVOT_X (axe de rotation sur col3/4).
-  // On recentre la grille à l'écran en visant X=-PIVOT_X (la grille reste centrée de face,
-  // mais bascule autour de col3/4 lors de la rotation cube).
-  const offX=-PIVOT_X + ((BANKS>1)?BANK_GAP/2:0);          // v78 : milieu des 2 bancs
-  // v36 : mémorise le cadrage PLEIN (toute la grille) comme borne large du zoom.
-  baseFitZ=camera.position.z; baseFitY=offY; baseWorldPerPx=worldPerPx; vFOVcache=vFOV;
-  camera.position.set(offX,offY,camera.position.z); camera.lookAt(offX,offY,0);
+  const offX=-PIVOT_X + ((BANKS>1)?BANK_GAP/2:0);          // milieu des 2 bancs (inchangé)
+  // v83 : Z = simple distance d'observation, neutre en ortho (n'affecte pas l'échelle). On se place
+  //  bien au-delà du carrousel pour ne rien clipper en near.
+  const obsZ=CAM_Z;
+  // v36→v83 : baseFitZ stocke désormais le ZOOM de base (pas une distance). refreshZoom le réutilise.
+  baseFitZ=camera.zoom; baseFitY=offY; baseWorldPerPx=worldPerPx; vFOVcache=0;
+  camera.position.set(offX,offY,obsZ); camera.lookAt(offX,offY,0);
   camera.updateProjectionMatrix();
   refreshZoom();                                           // recale la cible de zoom sur le plateau courant
 }
 // v36 : ZOOM ADAPTATIF (repris de stereo/K5). Au lieu d'un Z fixe plein-cadre, on resserre
 // la profondeur sur l'ÉTENDUE RÉELLE des dominos du plateau courant : moins il y a de pièces
 // (plateaux allégés), plus on s'approche. Lissé dans animate (comme targetCamZ de K5).
-let baseFitZ=CAM_Z, baseFitY=0, baseWorldPerPx=0.02, vFOVcache=42*Math.PI/180;
-let targetCamZ=CAM_Z, targetCamY=0, targetCamX=-PIVOT_X;
+// v83 P1 : baseFitZ / targetCamZ / zoomSoloZ portent désormais un FACTEUR DE ZOOM ortho (≈1),
+//  plus une distance. fitCamera renseigne la vraie valeur dès le premier appel.
+let baseFitZ=1, baseFitY=0, baseWorldPerPx=0.02, vFOVcache=0;
+let targetCamZ=1, targetCamY=0, targetCamX=-PIVOT_X;
 // v60l : COORDINATION INTER-SYSTÈMES. refreshZoom publie ici l'échelle "solo" et l'emprise
 // brute de CE système ; la coordination (dans animate) lit l'autre système via SYSTEMS et
 // pose coordZ (échelle commune) + coordYShift (recentrage horizontal physique vers le centre).
-let zoomSoloZ=CAM_Z;          // échelle que ce système voudrait seul
+let zoomSoloZ=1;              // échelle (zoom ortho) que ce système voudrait seul
 let coordZ=null;              // échelle commune imposée (null = pas encore coordonné)
 let coordYShift=0;            // décalage horizontal-écran (axe Y logique) vers la médiane
 // v37 : refreshZoom(boardIdx) calcule la cible de zoom pour un plateau donné (par défaut le
 // courant). Appelé avec le plateau d'ARRIVÉE au lancement de la nav → le zoom vise déjà la
 // bonne échelle pendant la rotation : un seul geste continu, plus de "deux temps".
 function refreshZoom(boardIdx){
-  // v81c : HAUTEUR DE ZOOM = MAX des hauteurs occupées des 2 bancs (règle Gregory).
-  //  Banc 0 à 3 rangées, banc 1 à 4 → on cadre sur 4. Le banc le PLUS HAUT dicte l'échelle
-  //  pour les deux → dominos même taille + rangées alignées (condition fusion inter-banc).
-  //  Largeur = 2 bancs côte à côte (fixe). Centre Y ancré grille (=0) → rangées alignées.
-  let maxRows=1;                                  // hauteur occupée max (en rangées), au moins 1
-  for(let b=0;b<BANKS;b++){
-    const bi = (b===B.bank && boardIdx!=null) ? mod(boardIdx) : banks[b].currentBoard;
-    let rMin=Infinity,rMax=-Infinity;
-    for(let L=0;L<NLAYERS;L++){ const d=boards[bankKey(L,bi,b)]; if(!d)continue;
-      for(let i=0;i<TOTAL;i++){ if(!d[i])continue; const {row}=getPos(i);
-        if(row<rMin)rMin=row; if(row>rMax)rMax=row; } }
-    if(rMax>=rMin){ const h=rMax-rMin+1; if(h>maxRows)maxRows=h; }
-  }
-  // largeur fixe : emprise des 2 grilles côte à côte
-  const minX=-FACE_W/2, maxX=(BANKS-1)*BANK_GAP+FACE_W/2;
-  const padW=(maxX-minX)+2.0*CELL_W;
-  const padH=maxRows*CELL_W+2.0*CELL_W;           // hauteur = MAX rangées occupées (+ marge)
-  const aspect=VW()/VH();
-  const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
-  const needZh=padH/(2*Math.tan(vFOVcache/2));
-  const z=Math.max(needZw,needZh);
-  zoomSoloZ=z;
-  targetCamZ=(coordZ!=null)?coordZ:z;             // échelle COMMUNE → dominos même taille des 2 côtés
-  targetCamY=baseFitY;                            // centre Y ancré grille → rangées alignées inter-bancs
-  targetCamX=-PIVOT_X + (minX+maxX)/2;            // centre X des 2 bancs
+  // v82 : ZOOM GELÉ. Plus de calcul adaptatif (max-rows abandonné). On cadre TOUJOURS sur
+  //  la grille complète des 2 bancs (5 rangées entières), à l'échelle fixe posée par fitCamera.
+  //  Conséquence : une rangée logique row a un y monde fixe et identique dans les 2 bancs ;
+  //  une case VIDE (row sans domino) occupe quand même sa ligne → row N fait face à row N,
+  //  vide ou pas. L'alignement inter-banc devient une propriété de la grille, pas du contenu.
+  //  boardIdx conservé pour compat signature (navigation), non utilisé tant que le zoom est gelé.
+  zoomSoloZ=baseFitZ;
+  targetCamZ=baseFitZ;                            // échelle pleine = grille entière, fixe
+  targetCamY=baseFitY;                            // centre Y du cadrage plein
+  targetCamX=-PIVOT_X + ((BANKS>1)?BANK_GAP/2:0); // milieu des 2 bancs (= offX de fitCamera)
 }
-camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); fitCamera();
+camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); camera.zoom=1; camera.updateProjectionMatrix(); fitCamera();
 window.addEventListener('resize',fitCamera);
 // v75 : iOS recale les dimensions APRÈS l'event orientationchange → on rejoue fitCamera en différé
 // (sinon en paysage le canvas/rect gardent l'état portrait → picking vise hors grille → "ne répond pas").
@@ -2526,26 +2587,30 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // v40 : le glissement n'utilise PLUS de dézoom brutal. À la place, refreshZoom est recalculé
   // en continu sur les positions VISUELLES réelles pendant le slide (voir applySlide) → le zoom
   // principal SUIT l'étendue qui passe de 3 à 4/5 colonnes. Ici, simple lissage vers targetCamZ.
-  let zGoal=targetCamZ, bell=0;
+  // v83 P1 : ORTHO. La cible targetCamZ porte un ZOOM (≈ baseFitZ). L'anti-débordement pendant la
+  //  rotation n'augmente plus une distance Z (sans effet en ortho) : il RÉDUIT le zoom pour élargir
+  //  le cadre. Pendant le balayage, la grille pivote autour de PIVOT_X et occupe une largeur
+  //  halfSweep*2 au lieu de spanW → on doit dézoomer du ratio correspondant.
+  let zoomGoal=targetCamZ, bell=0;
   if(B.isAnimating){
     const aspect=VW()/VH();
     const halfSweep=(FACE_W/2+Math.abs(PIVOT_X))+0.4*CELL_W;
-    const zSafe=halfSweep/(Math.tan(vFOVcache/2)*aspect);
+    const sweptSpan=(BANKS>1)?(BANK_GAP+2*halfSweep):(2*halfSweep);   // largeur balayée au pic
+    const baseSpan=(BANKS>1)?(BANK_GAP+FACE_W):FACE_W;                // largeur au repos (cf fitCamera)
+    const zoomSafe=targetCamZ*(baseSpan/sweptSpan);                   // zoom réduit pour tout contenir
     const dotv=Math.min(1,Math.abs(B.spin.quaternion.dot(B.targetQuat)));
     const angLeft=2*Math.acos(dotv);                  // radians restants (≈π/2 au départ)
     const prog=1-Math.min(1,angLeft/(Math.PI/2));     // 0→1
     bell=Math.sin(Math.min(1,Math.max(0,prog))*Math.PI); // 0 aux bords, 1 au milieu
-    zGoal=targetCamZ + bell*Math.max(0, zSafe-targetCamZ);
+    zoomGoal=targetCamZ + bell*(zoomSafe-targetCamZ); // au pic : zoomSafe (dézoom) ; aux bords : plein
   }
-  // v41b : X partage LA MÊME cloche que Z. Au pic de l'arc (bell=1) on vise -PIVOT_X (axe
-  // de bascule col3/4) ; aux extrémités (bell=0) on vise targetCamX (recentré sur les colonnes
-  // occupées). Une seule courbe continue → Z, Y et X convergent ensemble, plus de désynchro.
-  // v81 : en multi-banc, pas de recentrage-cloche vers -PIVOT_X (casserait l'alignement des 2 bancs).
-  //  La caméra reste sur le centre global stable ; seule la cloche Z (recul anti-débordement) joue.
+  // v41b/v81 : X partage la même cloche en mono-banc ; en multi-banc la caméra reste centrée stable.
   const xGoal=(BANKS>1)?targetCamX:(targetCamX + bell*(-PIVOT_X-targetCamX));
-  camera.position.z += (zGoal-camera.position.z)*0.12*TS;
+  // v83 P1 : on lisse le ZOOM (pas la distance Z, qui reste fixe = neutre en ortho).
+  camera.zoom += (zoomGoal-camera.zoom)*0.12*TS;
   camera.position.y += (targetCamY-camera.position.y)*0.08*TS;
   camera.position.x += (xGoal-camera.position.x)*0.12*TS;
+  camera.updateProjectionMatrix();                    // ortho : le zoom n'agit qu'après recalcul du frustum
   // v49 : lissage de la transition de profondeur entre layers (swipe vertical 2 doigts).
   if(NLAYERS>1){
     const lf=layerFade; layerFade += (B.currentLayer-layerFade)*0.14*TS;
@@ -2555,8 +2620,40 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     cubeGroup.position.z = -RADIUS + layerFade*LAYER_GAP;
   }
   camera.lookAt(camera.position.x, camera.position.y, 0);
+  // v82 : OVERLAY COORDONNÉES — labels B{banc} c{col} r{row} sur chaque domino visible.
+  updateCoordTags();
+  // v83 P5-0 : SONDE INTER-BANC (lecture seule). Affiche les paires de bord détectées, sans rien fusionner.
+  { const _ib=document.getElementById('probeIB');
+    if(_ib){ const pairs=interBankPairs();
+      _ib.textContent = pairs.length
+        ? 'inter-banc: '+pairs.map(p=>'r'+p.row+'('+p.icon+')').join(' ')
+        : 'inter-banc: —'; } }
   // v60a : rendu routé via la fondation factory (un seul système → iso-v5).
   SYS.render();
+}
+// v82 : pool de divs réutilisés (pas de create/destroy par frame). Lit le flag global __coordOn.
+let _coordHost=null;
+const _coordPool=[];
+function updateCoordTags(){
+  if(!window.__coordOn){ if(_coordPool.length&&_coordPool[0].style.display!=='none')_coordPool.forEach(d=>d.style.display='none'); return; }
+  if(!_coordHost){ _coordHost=document.getElementById('coordLayer'); if(!_coordHost) return; }  // host pas prêt → on saute la frame
+  const wp=new THREE.Vector3(); let used=0;
+  const vw=window.innerWidth, vh=window.innerHeight;
+  boards.forEach((arr,key)=>arr.forEach((p,si)=>{
+    if(!p||!p.mesh||!p.mesh.visible)return;
+    const NB=NLAYERS*NBOARDS;
+    const bk=Math.floor(key/NB);                       // banc réel
+    const {col,row}=getPos(si);
+    p.mesh.getWorldPosition(wp); wp.project(camera);
+    if(wp.z>1)return;                                  // derrière la caméra
+    const sx=(wp.x*0.5+0.5)*vw, sy=(-wp.y*0.5+0.5)*vh;
+    let tag=_coordPool[used];
+    if(!tag){ tag=document.createElement('div'); tag.className='coordTag'; _coordHost.appendChild(tag); _coordPool.push(tag); }
+    tag.textContent='B'+bk+' c'+col+' r'+row;
+    tag.style.left=sx+'px'; tag.style.top=sy+'px'; tag.style.display='block';
+    used++;
+  }));
+  for(let k=used;k<_coordPool.length;k++) _coordPool[k].style.display='none';
 }
 buildBoards(); assignFaces(); updateUI(); animate();
 // v28 : check au démarrage pour détecter les twins déjà présents dans le board initial
@@ -2578,6 +2675,35 @@ const SYSTEMS = [sysA];
   const sl=document.getElementById('tsSliderG'), lab=document.getElementById('tsLabelG');
   const updSpeed=()=>{ TS=Math.max(0.05, sl.value/100); lab.textContent=TS.toFixed(2)+'×'; };
   sl.addEventListener('input',updSpeed); updSpeed();
+
+  // — v82 : OVERLAY COORDONNÉES (on/off) — flag global lu par animate de chaque système —
+  const coordBtn=document.getElementById('coordBtn');
+  const coordLayer=document.getElementById('coordLayer');
+  coordBtn.addEventListener('click',()=>{
+    window.__coordOn=!window.__coordOn;
+    coordBtn.classList.toggle('off',!window.__coordOn);
+    coordLayer.classList.toggle('on',!!window.__coordOn);
+  });
+
+  // — v82 : CROIX DE CONSTRUCTION (on/off) — repère fixe milieu géométrique écran —
+  let xhairOn=false;
+  const xhBtn=document.getElementById('xhairBtn');
+  const xhH=document.getElementById('xhairH'), xhV=document.getElementById('xhairV');
+  xhBtn.addEventListener('click',()=>{
+    xhairOn=!xhairOn;
+    xhBtn.classList.toggle('off',!xhairOn);
+    xhH.classList.toggle('on',xhairOn); xhV.classList.toggle('on',xhairOn);
+  });
+
+  // — v82 : MENU EN BAS masquable (la barre + son contenu coulissent vers le bas) —
+  let menuHidden=false;
+  const mTog=document.getElementById('menuToggle');
+  const cBar=document.getElementById('commonBar');
+  mTog.addEventListener('click',()=>{
+    menuHidden=!menuHidden;
+    cBar.classList.toggle('hidden',menuHidden);
+    mTog.textContent = menuHidden ? '☰' : '✕';
+  });
 
   // — médianes communes (on/off sur les deux) —
   let medOn=false;
