@@ -2815,5 +2815,58 @@ const SYSTEMS = [sysA];
 })();
 
 </script>
+
+<!-- ===== SONDE DIAGNOSTIC PAYSAGE — lecture seule, autonome, à retirer après diag ===== -->
+<div id="probeLAND" style="position:fixed;left:50%;bottom:120px;transform:translateX(-50%);
+  z-index:99999;font:11px/1.5 monospace;color:#9fe;background:rgba(0,0,0,.82);
+  padding:8px 12px;border-radius:6px;pointer-events:none;white-space:pre;text-align:left;
+  border:1px solid #2a4">sonde paysage…</div>
+<script>
+(function(){
+  function fmt(n){ return (n==null?'—':Math.round(n)); }
+  function tick(){
+    var box = document.getElementById('probeLAND'); if(!box) return;
+    var sys  = document.getElementById('sysA');
+    var bar  = document.getElementById('commonBar');
+    var mTog = document.getElementById('menuToggle');
+
+    var iW = window.innerWidth, iH = window.innerHeight;
+    var orient = iW>=iH ? 'PAYSAGE' : 'portrait';
+
+    // ce que le moteur croit (VW/VH = clientW/H du .sys)
+    var sW = sys ? sys.clientWidth  : null;
+    var sH = sys ? sys.clientHeight : null;
+    var sysAspect = (sW&&sH) ? (sW/sH).toFixed(2) : '—';
+    var winAspect = (iH) ? (iW/iH).toFixed(2) : '—';
+
+    // le canvas réel
+    var cv = sys ? sys.querySelector('#c') : null;
+    var cr = cv ? cv.getBoundingClientRect() : null;
+
+    // le bouton menu : est-il dans l'écran, et est-il LUI qui reçoit le tap en son centre ?
+    var br = mTog ? mTog.getBoundingClientRect() : null;
+    var hit = '—';
+    if(br){
+      var cx = br.left + br.width/2, cy = br.top + br.height/2;
+      var el = document.elementFromPoint(cx, cy);
+      hit = el ? (el.id || el.tagName) : 'null';
+    }
+    var barHidden = bar ? bar.classList.contains('hidden') : '—';
+
+    box.textContent =
+      orient+'  win '+iW+'x'+iH+'  aspW '+winAspect+'\n'+
+      'sys '+fmt(sW)+'x'+fmt(sH)+'  aspS '+sysAspect+
+        ((sysAspect!==winAspect)?'  ⚠ASPECT≠':'')+'\n'+
+      'canvas rect '+(cr?fmt(cr.width)+'x'+fmt(cr.height):'—')+
+        ' @'+(cr?fmt(cr.left)+','+fmt(cr.top):'—')+'\n'+
+      'menuBtn rect '+(br?fmt(br.width)+'x'+fmt(br.height):'—')+
+        ' @'+(br?fmt(br.left)+','+fmt(br.top):'—')+'\n'+
+      'menuBtn centre → EFP = '+hit+
+        ((hit!=='menuToggle'&&hit!=='—')?'  ⚠VOLÉ':'  ✓')+
+      '  hidden='+barHidden;
+  }
+  setInterval(tick, 300);
+})();
+</script>
 </body>
 </html>
