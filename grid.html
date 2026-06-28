@@ -2359,34 +2359,31 @@ let coordYShift=0;            // décalage horizontal-écran (axe Y logique) ver
 // courant). Appelé avec le plateau d'ARRIVÉE au lancement de la nav → le zoom vise déjà la
 // bonne échelle pendant la rotation : un seul geste continu, plus de "deux temps".
 function refreshZoom(boardIdx){
-  // v68 : ÉCHELLE sur l'emprise RÉELLE des pièces (pour que tout rentre, des deux côtés),
-  // mais CENTRAGE fixe (vue stable, la caméra ne court pas après les pièces).
-  // zoomSoloZ alimente la coordination inter-systèmes (coordinate() prend le max → zoom commun).
-  const bi = (boardIdx==null) ? B.currentBoard : mod(boardIdx);
-  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,n=0;
-  for(let L=0;L<NLAYERS;L++){ const d=boards[boardKey(L,bi)]; if(!d)continue;
-    for(let i=0;i<TOTAL;i++){ const p=d[i]; if(!p)continue; const {col,row}=getPos(i); const {x,y}=cellToLocal(col,row);
-      minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++; } }
-  // emprise = au moins la grille entière ; on étend si des pièces (glissées) dépassent.
-  const exMinX=Math.min(-FACE_W/2, n?minX:Infinity), exMaxX=Math.max(FACE_W/2, n?maxX:-Infinity);
-  const exMinY=Math.min(-FACE_H/2, n?minY:Infinity), exMaxY=Math.max(FACE_H/2, n?maxY:-Infinity);
-  // v78 : avec 2 bancs, la largeur à cadrer couvre du banc 0 (~0) au banc 1 (~BANK_GAP).
-  const spanX = (BANKS>1) ? (BANK_GAP + (exMaxX-exMinX)) : (exMaxX-exMinX);
-  const padW=spanX+2.0*CELL_W, padH=(exMaxY-exMinY)+2.0*CELL_W;
+  // v81c : HAUTEUR DE ZOOM = MAX des hauteurs occupées des 2 bancs (règle Gregory).
+  //  Banc 0 à 3 rangées, banc 1 à 4 → on cadre sur 4. Le banc le PLUS HAUT dicte l'échelle
+  //  pour les deux → dominos même taille + rangées alignées (condition fusion inter-banc).
+  //  Largeur = 2 bancs côte à côte (fixe). Centre Y ancré grille (=0) → rangées alignées.
+  let maxRows=1;                                  // hauteur occupée max (en rangées), au moins 1
+  for(let b=0;b<BANKS;b++){
+    const bi = (b===B.bank && boardIdx!=null) ? mod(boardIdx) : banks[b].currentBoard;
+    let rMin=Infinity,rMax=-Infinity;
+    for(let L=0;L<NLAYERS;L++){ const d=boards[bankKey(L,bi,b)]; if(!d)continue;
+      for(let i=0;i<TOTAL;i++){ if(!d[i])continue; const {row}=getPos(i);
+        if(row<rMin)rMin=row; if(row>rMax)rMax=row; } }
+    if(rMax>=rMin){ const h=rMax-rMin+1; if(h>maxRows)maxRows=h; }
+  }
+  // largeur fixe : emprise des 2 grilles côte à côte
+  const minX=-FACE_W/2, maxX=(BANKS-1)*BANK_GAP+FACE_W/2;
+  const padW=(maxX-minX)+2.0*CELL_W;
+  const padH=maxRows*CELL_W+2.0*CELL_W;           // hauteur = MAX rangées occupées (+ marge)
   const aspect=VW()/VH();
   const needZw=padW/(2*Math.tan(vFOVcache/2)*aspect);
   const needZh=padH/(2*Math.tan(vFOVcache/2));
   const z=Math.max(needZw,needZh);
-  zoomSoloZ=z;                                 // échelle voulue par CE système seul
-  targetCamZ=(coordZ!=null)?coordZ:z;          // suit l'échelle commune si coordonné
-  targetCamY=baseFitY;                         // v75 TEST : suivre le décalage vertical de fitCamera
-                                               // (zones réservées haut/bas). targetCamY=0 le ré-annulait,
-                                               // créant un flottement Y ~1u en paysage → picking 1 rangée trop haut.
-  targetCamX=-PIVOT_X+coordYShift + ((BANKS>1)?BANK_GAP/2:0);  // v78 : centre entre banc0 et banc1
-                                               // refreshZoom posait 0 → décalage 1.5u, invisible en portrait
-                                               // mais énorme en paysage (asp 1.87) → picking ratait 9/10.
-  // v75 : bloc test 2-bancs RETIRÉ — il reculait la caméra sur BANK_GAP+2 grilles et décalait
-  // le centre, ce qui éjectait les pièces dans un coin en paysage. Cadrage mono-banc rétabli.
+  zoomSoloZ=z;
+  targetCamZ=(coordZ!=null)?coordZ:z;             // échelle COMMUNE → dominos même taille des 2 côtés
+  targetCamY=baseFitY;                            // centre Y ancré grille → rangées alignées inter-bancs
+  targetCamX=-PIVOT_X + (minX+maxX)/2;            // centre X des 2 bancs
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); fitCamera();
 window.addEventListener('resize',fitCamera);
@@ -2447,10 +2444,13 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // faces à rendre : la courante, et pendant la rotation aussi la cible (les autres masquées)
   const targetBoard = B.isAnimating ? B.navTarget : B.currentBoard;
   boards.forEach((arr,key)=>arr.forEach((p,si)=>{ if(!p||!p.mesh)return; const ud=p.mesh.userData;
-    const pl=Math.floor(key/NBOARDS), f=key%NBOARDS;          // v49 : layer + face réels
-    let shown = (f===B.currentBoard)||(B.isAnimating&&f===targetBoard);
+    const NB=NLAYERS*NBOARDS;
+    const bk=Math.floor(key/NB), pl=Math.floor((key%NB)/NBOARDS), f=key%NBOARDS;  // v81 : banc + layer + face réels
+    const bb=banks[bk];                                                            // v81 : état du BANC de cette pièce
+    const bTarget = bb.isAnimating ? bb.navTarget : bb.currentBoard;
+    let shown = (f===bb.currentBoard)||(bb.isAnimating&&f===bTarget);
     // pendant la rotation, les cases-portes sont rendues par leurs PROXIES fixes : on masque le vrai
-    if(B.isAnimating&&isPorteIdx(si)) shown=false;
+    if(bb.isAnimating&&isPorteIdx(si)) shown=false;
     p.mesh.visible = shown;
     if(!shown) return;
     const ldim = (NLAYERS<2) ? 1 : layerDimFor(pl);          // atténuation de profondeur de CE layer
@@ -2493,8 +2493,9 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
     ud.faceMesh.material.opacity = 1*ldim;
   }));
   // grilles : visibles seulement pour la face courante (+ cible pendant la rotation)
-  gridMeshes.forEach(g=>{ if(!g)return; const f=g.userData.face, pl=g.userData.layer||0;
-    g.visible = (f===B.currentBoard)||(B.isAnimating&&f===targetBoard);
+  gridMeshes.forEach(g=>{ if(!g)return; const f=g.userData.face, pl=g.userData.layer||0, bk=g.userData.bank||0;
+    const bb=banks[bk]; const bTarget=bb.isAnimating?bb.navTarget:bb.currentBoard;
+    g.visible = (f===bb.currentBoard)||(bb.isAnimating&&f===bTarget);
     g.position.set(0,0,0);
     g.material.opacity = 0.5 * ((NLAYERS<2)?1:layerDimFor(pl)); });
   // PIÈCE FLOTTANTE (transfert) : reste fixe devant la caméra, en sus du cube qui tourne.
@@ -2539,16 +2540,12 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // v41b : X partage LA MÊME cloche que Z. Au pic de l'arc (bell=1) on vise -PIVOT_X (axe
   // de bascule col3/4) ; aux extrémités (bell=0) on vise targetCamX (recentré sur les colonnes
   // occupées). Une seule courbe continue → Z, Y et X convergent ensemble, plus de désynchro.
-  const xGoal=targetCamX + bell*(-PIVOT_X-targetCamX);
+  // v81 : en multi-banc, pas de recentrage-cloche vers -PIVOT_X (casserait l'alignement des 2 bancs).
+  //  La caméra reste sur le centre global stable ; seule la cloche Z (recul anti-débordement) joue.
+  const xGoal=(BANKS>1)?targetCamX:(targetCamX + bell*(-PIVOT_X-targetCamX));
   camera.position.z += (zGoal-camera.position.z)*0.12*TS;
   camera.position.y += (targetCamY-camera.position.y)*0.08*TS;
   camera.position.x += (xGoal-camera.position.x)*0.12*TS;
-  // ── SONDE v80 cadrage (lecture seule) ──
-  { const _p=document.getElementById('probe75');
-    if(_p){ let vis0=0,vis1=0; const NB=NLAYERS*NBOARDS;
-      boards.forEach((arr,key)=>{ if(!arr)return; const bk=Math.floor(key/NB); arr.forEach(p=>{ if(p&&p.mesh&&p.mesh.visible){ if(bk===0)vis0++; else vis1++; } }); });
-      _p.textContent='vis b0='+vis0+' b1='+vis1+' | cur0='+banks[0].currentBoard+' cur1='+banks[1].currentBoard
-        +' active='+activeBank+' anim='+(B.isAnimating?1:0); } }
   // v49 : lissage de la transition de profondeur entre layers (swipe vertical 2 doigts).
   if(NLAYERS>1){
     const lf=layerFade; layerFade += (B.currentLayer-layerFade)*0.14*TS;
