@@ -2833,11 +2833,21 @@ const SYSTEMS = [sysA];
     var iW = window.innerWidth, iH = window.innerHeight;
     var orient = iW>=iH ? 'PAYSAGE' : 'portrait';
 
+    // v2 : les 3 hauteurs iOS qui peuvent diverger après orientationchange
+    var deH = document.documentElement.clientHeight;
+    var vvH = window.visualViewport ? Math.round(window.visualViewport.height) : null;
+    // si deH (ou stage) > iH → le layout déborde sous l'écran visible = source des 59px
+
     // ce que le moteur croit (VW/VH = clientW/H du .sys)
     var sW = sys ? sys.clientWidth  : null;
     var sH = sys ? sys.clientHeight : null;
     var sysAspect = (sW&&sH) ? (sW/sH).toFixed(2) : '—';
     var winAspect = (iH) ? (iW/iH).toFixed(2) : '—';
+
+    // rects des conteneurs : si stage/sys débordent en bas, tout fixed:bottom tombe hors écran
+    var stg = document.getElementById('stage');
+    var sr  = stg ? stg.getBoundingClientRect() : null;
+    var syr = sys ? sys.getBoundingClientRect() : null;
 
     // le canvas réel
     var cv = sys ? sys.querySelector('#c') : null;
@@ -2851,18 +2861,22 @@ const SYSTEMS = [sysA];
       var el = document.elementFromPoint(cx, cy);
       hit = el ? (el.id || el.tagName) : 'null';
     }
+    var belowScreen = (br && br.top >= iH) ? '  ⚠HORS-ÉCRAN' : '';
     var barHidden = bar ? bar.classList.contains('hidden') : '—';
 
     box.textContent =
-      orient+'  win '+iW+'x'+iH+'  aspW '+winAspect+'\n'+
-      'sys '+fmt(sW)+'x'+fmt(sH)+'  aspS '+sysAspect+
-        ((sysAspect!==winAspect)?'  ⚠ASPECT≠':'')+'\n'+
+      orient+'  win '+iW+'x'+iH+'\n'+
+      'H: innerH '+iH+'  docElH '+deH+'  vvH '+(vvH==null?'—':vvH)+
+        ((deH>iH||(vvH&&vvH>iH))?'  ⚠LAYOUT>ÉCRAN':'')+'\n'+
+      'stage rect '+(sr?fmt(sr.width)+'x'+fmt(sr.height):'—')+
+        ' @'+(sr?fmt(sr.left)+','+fmt(sr.top):'—')+'\n'+
+      'sys rect '+(syr?fmt(syr.width)+'x'+fmt(syr.height):'—')+
+        ' @'+(syr?fmt(syr.left)+','+fmt(syr.top):'—')+'\n'+
       'canvas rect '+(cr?fmt(cr.width)+'x'+fmt(cr.height):'—')+
         ' @'+(cr?fmt(cr.left)+','+fmt(cr.top):'—')+'\n'+
-      'menuBtn rect '+(br?fmt(br.width)+'x'+fmt(br.height):'—')+
-        ' @'+(br?fmt(br.left)+','+fmt(br.top):'—')+'\n'+
-      'menuBtn centre → EFP = '+hit+
-        ((hit!=='menuToggle'&&hit!=='—')?'  ⚠VOLÉ':'  ✓')+
+      'menuBtn @'+(br?fmt(br.left)+','+fmt(br.top):'—')+belowScreen+'\n'+
+      'menuBtn EFP = '+hit+
+        ((hit!=='menuToggle'&&hit!=='—')?'  ⚠VOLÉ/HORS':'  ✓')+
       '  hidden='+barHidden;
   }
   setInterval(tick, 300);
