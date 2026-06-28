@@ -331,8 +331,14 @@
 <title>ADAM Stack — v58 · Portes (modèle A1) : pose libre, occupants sauvegardés et restaurés</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
+  /* v86 P1b : FIX décalage 59px paysage iOS. min-height:100vh forçait le body à 452px
+     (100vh n'enlève pas la barre Safari) dans une fenêtre visible de 393px → débordement
+     de 59px → body scrollé de 59 → tous les éléments position:fixed (relatifs au body)
+     poussés de 59. Mesuré device : body rect @0,59 scroll -59. On borne le body/html à la
+     hauteur VISIBLE réelle (100dvh = hauteur dynamique = 393), plus de débordement. */
+  html { height:100%; overflow:hidden; }
   body {
-    background:#000000; min-height:100vh;
+    background:#000000; height:100vh; height:100dvh; max-height:100dvh;
     display:flex; flex-direction:column; justify-content:center; align-items:center;
     font-family:'SF Mono','Fira Code',monospace; color:rgba(220,220,235,0.9);
     overflow:hidden; user-select:none;
