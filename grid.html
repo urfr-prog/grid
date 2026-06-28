@@ -394,7 +394,12 @@
      #stage couvre l'écran et pose les deux .sys côte à côte (gauche|droite).
      Chaque .sys est un demi-écran autonome ; ses éléments UI passent en
      position:absolute (relatifs au .sys) au lieu de fixed (viewport). */
-  #stage { position:fixed; inset:0; display:flex; }
+  /* v86 P1 : ancrage sur le viewport PHYSIQUE réel. inset:0 se calait sur la zone sûre
+     en paysage iOS → #stage (et tout son contenu) poussé ~59px vers le bas (mesuré device :
+     stage rect @0,59). On force top/left:0 + dimensions viewport pleines, safe-area ignorée
+     pour ce conteneur. La grille se recentre et le menu (calé sur bottom) rentre dans l'écran. */
+  #stage { position:fixed; top:0; left:0; width:100vw; height:100vh; display:flex; }
+  @supports (height:100dvh){ #stage{ width:100dvw; height:100dvh; } }
   /* v70 R2 : un seul .sys → plein écran (flex:1 occupe tout #stage). */
   .sys { position:relative; flex:1 1 100%; width:100%; height:100%; overflow:hidden; }
   /* canvas : dimensions SWAPPÉES posées en PIXELS par fitCamera (= VW×VH), pas en 100vh/50vw
