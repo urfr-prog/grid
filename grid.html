@@ -331,14 +331,8 @@
 <title>ADAM Stack — v58 · Portes (modèle A1) : pose libre, occupants sauvegardés et restaurés</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  /* v86 P1b : FIX décalage 59px paysage iOS. min-height:100vh forçait le body à 452px
-     (100vh n'enlève pas la barre Safari) dans une fenêtre visible de 393px → débordement
-     de 59px → body scrollé de 59 → tous les éléments position:fixed (relatifs au body)
-     poussés de 59. Mesuré device : body rect @0,59 scroll -59. On borne le body/html à la
-     hauteur VISIBLE réelle (100dvh = hauteur dynamique = 393), plus de débordement. */
-  html { height:100%; overflow:hidden; }
   body {
-    background:#000000; height:100vh; height:100dvh; max-height:100dvh;
+    background:#000000; min-height:100vh;
     display:flex; flex-direction:column; justify-content:center; align-items:center;
     font-family:'SF Mono','Fira Code',monospace; color:rgba(220,220,235,0.9);
     overflow:hidden; user-select:none;
@@ -2836,16 +2830,32 @@ const SYSTEMS = [sysA];
   function fmt(n){ return (n==null?'—':Math.round(n)); }
 
   var stage = document.getElementById('stage');
-  // mémorise l'état d'origine de #stage pour pouvoir tout annuler
-  var orig = stage ? stage.getAttribute('style') : '';
+  var scrollKiller = null;   // intervalle qui force le scroll à 0 (test S1)
 
-  // — correctifs candidats : chacun force #stage différemment —
+  // — tests ciblant la VRAIE cause : le body scrollé de 59 —
   var tests = {
-    'RESET'      : function(){ stage.setAttribute('style', orig||''); },
-    'T1 fixed0'  : function(){ stage.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;display:flex;'; },
-    'T2 0,0+px'  : function(){ stage.style.cssText='position:fixed;top:0;left:0;width:'+window.innerWidth+'px;height:'+window.innerHeight+'px;display:flex;'; },
-    'T3 absolute': function(){ document.body.style.display='block'; stage.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;display:flex;'; },
-    'T4 body0'   : function(){ document.body.style.cssText='background:#000;margin:0;padding:0;overflow:hidden;'; stage.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;display:flex;'; }
+    'RESET'      : function(){
+        if(scrollKiller){ clearInterval(scrollKiller); scrollKiller=null; }
+        location.reload();   // remet tout d'aplomb
+    },
+    'S1 scroll0' : function(){
+        // force le scroll à 0 en boucle (window + body + documentElement)
+        if(scrollKiller) clearInterval(scrollKiller);
+        scrollKiller=setInterval(function(){
+          window.scrollTo(0,0);
+          document.body.scrollTop=0;
+          document.documentElement.scrollTop=0;
+        },100);
+    },
+    'S2 once'    : function(){ window.scrollTo(0,0); document.body.scrollTop=0; document.documentElement.scrollTop=0; },
+    'S3 dvh'     : function(){ document.body.style.height='100dvh'; document.documentElement.style.height='100dvh'; window.scrollTo(0,0); },
+    'S4 winpx'   : function(){
+        // borne body à la hauteur visible exacte en pixels, puis scroll0
+        document.documentElement.style.height=window.innerHeight+'px';
+        document.body.style.height=window.innerHeight+'px';
+        document.body.style.minHeight='0';
+        window.scrollTo(0,0); document.body.scrollTop=0; document.documentElement.scrollTop=0;
+    }
   };
   var btnHost=document.getElementById('probeBtns');
   Object.keys(tests).forEach(function(name){
