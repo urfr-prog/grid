@@ -512,9 +512,9 @@
     </div>
     <button id="undoBtnG" class="undo-btn" aria-label="Annuler">↶</button>
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
-    <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0004→0005→0006…).
+    <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0005→0006→0007…).
          Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
-    <span id="verTag">0004</span>
+    <span id="verTag">0005</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
@@ -522,9 +522,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════════╗
-   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0004                     ║
+   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0005                     ║
    ║  RÈGLE : à CHAQUE nouvelle génération de code, INCRÉMENTER l'indice         ║
-   ║  (0004→0005→0006…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
+   ║  (0005→0006→0007…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
    ║  doivent toujours correspondre. Permet de vérifier sur device que GitHub    ║
    ║  a servi la bonne version malgré la latence.                                ║
    ╚══════════════════════════════════════════════════════════════════════════╝ */
@@ -1322,12 +1322,16 @@ function nextLiveBoard(dir){
 function navRight(){ if(B.busy||B.isAnimating||swapAnim||rotAnim)return; const tgt=nextLiveBoard(1); if(tgt<0)return;
   window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG
   B.busy=true;B.isAnimating=true;B.navDir=1;B.navTarget=tgt;
-  showPorteProxies(); refreshZoom(tgt);   // v37 : zoom vise déjà l'arrivée (geste continu)
+  showPorteProxies();
+  // v0005 : cible de zoom = emprise d'ARRIVÉE, posée AVANT que atRest ne gèle refreshZoom.
+  //  Le lissage (animate) y glisse pendant la rotation → plus de saut à la pose.
+  { const tt=zoomTargetFromSpan(window.__navDiag.to); targetCamZ=tt.z; targetCamY=tt.camY; targetCamX=tt.camX; zoomSoloZ=tt.z; }
   B.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt)); }
 function navLeft(){ if(B.busy||B.isAnimating||swapAnim||rotAnim)return; const tgt=nextLiveBoard(-1); if(tgt<0)return;
   window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG
   B.busy=true;B.isAnimating=true;B.navDir=-1;B.navTarget=tgt;
-  showPorteProxies(); refreshZoom(tgt);   // v37 : zoom vise déjà l'arrivée (geste continu)
+  showPorteProxies();
+  { const tt=zoomTargetFromSpan(window.__navDiag.to); targetCamZ=tt.z; targetCamY=tt.camY; targetCamX=tt.camX; zoomSoloZ=tt.z; }
   B.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt)); }
 function onRotationComplete(){ B.currentBoard=B.navTarget; B.navDir=0;
   B.spin.quaternion.copy(B.targetQuat); assignFaces(); hidePorteProxies(); B.isAnimating=false; B.busy=false; updateUI(); refreshZoom();
@@ -2578,25 +2582,42 @@ function measureVisibleSpanY(){
     spanX: nv?(xmax-xmin):0, centerX: nv?((xmin+xmax)/2):0,
     halfSpanFromMedian: halfMed };
 }
-// v0004 DIAG (lecture seule) : emprise LOGIQUE d'un board cible, calculée sans qu'il soit affiché.
-//  Sert à comparer l'emprise du board de DÉPART vs ARRIVÉE au lancement de la nav, pour mesurer
-//  l'ampleur du saut de zoom à la pose. Parcourt le banc ACTIF sur le face `f` au layer courant.
-function boardSpanLogic(f){
-  const arr = boards[ bankKey(B.currentLayer, f, B.bank) ];
-  if(!arr) return { nv:0, spanY:0, halfMed:0 };
+// v0004→v0005 : emprise LOGIQUE combinée des bancs SI le banc actif affichait le board `fActive`.
+//  Reproduit ce que measureVisibleSpanY verrait à l'arrivée, mais calculé d'avance (board pas encore
+//  en scène). Banc actif projeté sur fActive ; les autres bancs restent sur LEUR board courant.
+//  Retourne spanY, centerY, halfMed — mêmes champs que la mesure visible, mêmes repères monde.
+function boardSpanLogic(fActive){
   let ymin=Infinity, ymax=-Infinity, halfMed=0, nv=0;
-  const bankXoff = (B.bank>0)? BANK_GAP : 0;          // décalage X-monde du banc actif
-  const median   = (BANKS>1)? (BANK_GAP/2) : 0;
-  for(let i=0;i<TOTAL;i++){
-    const p=arr[i]; if(!p) continue;
-    const {col,row}=getPos(i);
-    const loc=cellToLocal(col,row,f);                 // y local (dé-culbuté), x local centré
-    const xWorld = loc.x - PIVOT_X + bankXoff;        // même repère que les meshes (fg translaté -PIVOT_X)
-    ymin=Math.min(ymin,loc.y); ymax=Math.max(ymax,loc.y);
-    halfMed=Math.max(halfMed, Math.abs(xWorld - median));
-    nv++;
+  const median = (BANKS>1)?(BANK_GAP/2):0;
+  for(let bk=0; bk<BANKS; bk++){
+    const face = (bk===B.bank) ? fActive : banks[bk].currentBoard;   // banc actif → cible ; autres → courant
+    const arr  = boards[ bankKey(banks[bk].currentLayer, face, bk) ];
+    if(!arr) continue;
+    const bankXoff = (bk>0)? BANK_GAP : 0;
+    for(let i=0;i<TOTAL;i++){
+      const p=arr[i]; if(!p) continue;
+      const {col,row}=getPos(i);
+      const loc=cellToLocal(col,row,face);
+      const xWorld = loc.x - PIVOT_X + bankXoff;
+      ymin=Math.min(ymin,loc.y); ymax=Math.max(ymax,loc.y);
+      halfMed=Math.max(halfMed, Math.abs(xWorld - median));
+      nv++;
+    }
   }
-  return { nv, spanY: nv?(ymax-ymin):0, halfMed };
+  return { nv, spanY: nv?(ymax-ymin):0, centerY: nv?((ymin+ymax)/2):0, halfMed };
+}
+// v0005 : cible de zoom (z, camY, camX) pour une emprise donnée — MÊME formule que refreshZoom.
+//  Utilisée pour poser la cible d'ARRIVÉE dès le lancement de la nav → transition douce, pas de saut.
+function zoomTargetFromSpan(m){
+  if(!m.nv) return { z:baseFitZ, camY:baseFitY, camX:-PIVOT_X+((BANKS>1)?BANK_GAP/2:0) };
+  const effRows = Math.max(3, Math.min(ROWS, m.spanY/CELL_W + 1));
+  const growH = (ROWS*CELL_W)/(effRows*CELL_W);
+  const halfReal = Math.max(CELL_W/2, m.halfMed + CELL_W/2);
+  const growW = baseSpanW/(2*halfReal);
+  const grow = Math.min(growH, growW);
+  return { z: baseFitZ*grow*fillFactor,
+           camY: baseFitY + m.centerY,
+           camX: -PIVOT_X + ((BANKS>1)?BANK_GAP/2:0) };
 }
 function refreshZoom(boardIdx){
   // v87 P2-zoom : ZOOM ADAPTATIF COMMUN sur l'EMPRISE RÉELLE (largeur ET hauteur) des dominos visibles
