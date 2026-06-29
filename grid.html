@@ -470,6 +470,17 @@
   /* ☰ : bouton fixe en bas, hors barre → reste visible quand la barre est cachée */
   #menuToggle { position:fixed; right:14px; bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
     left:auto; top:auto; z-index:402; width:40px; height:40px; }
+  /* v0003 : COMPRESSION PAYSAGE iPhone (hauteur courte) — la barre + verTag + bouton dézoom
+     débordaient hors écran. On resserre gaps, paddings, slider et boutons pour tout faire tenir. */
+  @media (orientation:landscape) and (max-height:520px){
+    #commonBar { gap:7px; padding:5px 9px; bottom:calc(env(safe-area-inset-bottom,0px) + 5px); }
+    #commonBar .opt-btn, #commonBar .undo-btn { width:36px; height:36px; font-size:1rem; }
+    #commonBar .nav-bar .nav-dots { gap:6px; }
+    #slowmoG { padding:4px 8px; gap:6px; }
+    #slowmoG input[type=range]{ width:108px; }
+    #verTag { font-size:0.55rem; padding:0 3px; }
+    #menuToggle { width:34px; height:34px; }
+  }
 </style>
 </head>
 <body>
@@ -501,9 +512,9 @@
     </div>
     <button id="undoBtnG" class="undo-btn" aria-label="Annuler">↶</button>
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
-    <!-- v0002 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0001→0002→0003…).
+    <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0004→0005→0006…).
          Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
-    <span id="verTag">0002</span>
+    <span id="verTag">0004</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
@@ -511,13 +522,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════════╗
-   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0002                     ║
+   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0004                     ║
    ║  RÈGLE : à CHAQUE nouvelle génération de code, INCRÉMENTER l'indice         ║
-   ║  (0002→0003→0004…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
+   ║  (0004→0005→0006…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
    ║  doivent toujours correspondre. Permet de vérifier sur device que GitHub    ║
    ║  a servi la bonne version malgré la latence.                                ║
    ╚══════════════════════════════════════════════════════════════════════════╝ */
-let DEZOOM_ROT = false;   // v88 : on/off du dézoom-cloche pendant rotation/fusion (OFF = zoom figé, sans cloche). Scope global : lu par animate ET par le bouton de barre.
+let DEZOOM_ROT = true;   // v88 : on/off de la CLOCHE de rotation uniquement (le lissage reste toujours actif). true = comportement d'origine.
 const COLS=4, ROWS=5, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 // ─── v49 : SECOND LAYER (bridage) ────────────────────────────────────────────
 //  Un plan jumeau en PROFONDEUR derrière chaque face du cube. La rotation cube
@@ -1309,10 +1320,12 @@ function nextLiveBoard(dir){
   return -1;   // aucun autre plateau vivant
 }
 function navRight(){ if(B.busy||B.isAnimating||swapAnim||rotAnim)return; const tgt=nextLiveBoard(1); if(tgt<0)return;
+  window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG
   B.busy=true;B.isAnimating=true;B.navDir=1;B.navTarget=tgt;
   showPorteProxies(); refreshZoom(tgt);   // v37 : zoom vise déjà l'arrivée (geste continu)
   B.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt)); }
 function navLeft(){ if(B.busy||B.isAnimating||swapAnim||rotAnim)return; const tgt=nextLiveBoard(-1); if(tgt<0)return;
+  window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG
   B.busy=true;B.isAnimating=true;B.navDir=-1;B.navTarget=tgt;
   showPorteProxies(); refreshZoom(tgt);   // v37 : zoom vise déjà l'arrivée (geste continu)
   B.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt)); }
@@ -2565,6 +2578,26 @@ function measureVisibleSpanY(){
     spanX: nv?(xmax-xmin):0, centerX: nv?((xmin+xmax)/2):0,
     halfSpanFromMedian: halfMed };
 }
+// v0004 DIAG (lecture seule) : emprise LOGIQUE d'un board cible, calculée sans qu'il soit affiché.
+//  Sert à comparer l'emprise du board de DÉPART vs ARRIVÉE au lancement de la nav, pour mesurer
+//  l'ampleur du saut de zoom à la pose. Parcourt le banc ACTIF sur le face `f` au layer courant.
+function boardSpanLogic(f){
+  const arr = boards[ bankKey(B.currentLayer, f, B.bank) ];
+  if(!arr) return { nv:0, spanY:0, halfMed:0 };
+  let ymin=Infinity, ymax=-Infinity, halfMed=0, nv=0;
+  const bankXoff = (B.bank>0)? BANK_GAP : 0;          // décalage X-monde du banc actif
+  const median   = (BANKS>1)? (BANK_GAP/2) : 0;
+  for(let i=0;i<TOTAL;i++){
+    const p=arr[i]; if(!p) continue;
+    const {col,row}=getPos(i);
+    const loc=cellToLocal(col,row,f);                 // y local (dé-culbuté), x local centré
+    const xWorld = loc.x - PIVOT_X + bankXoff;        // même repère que les meshes (fg translaté -PIVOT_X)
+    ymin=Math.min(ymin,loc.y); ymax=Math.max(ymax,loc.y);
+    halfMed=Math.max(halfMed, Math.abs(xWorld - median));
+    nv++;
+  }
+  return { nv, spanY: nv?(ymax-ymin):0, halfMed };
+}
 function refreshZoom(boardIdx){
   // v87 P2-zoom : ZOOM ADAPTATIF COMMUN sur l'EMPRISE RÉELLE (largeur ET hauteur) des dominos visibles
   //  des 2 bancs ensemble → une seule échelle + un seul recentrage → alignement inter-banc préservé.
@@ -2773,10 +2806,9 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // v41b/v81 : X partage la même cloche en mono-banc ; en multi-banc la caméra reste centrée stable.
   const xGoal=(BANKS>1)?targetCamX:(targetCamX + bell*(-PIVOT_X-targetCamX));
   // v83 P1 : on lisse le ZOOM (pas la distance Z, qui reste fixe = neutre en ortho).
-  // v88 : DEZOOM OFF → on SNAPPE le zoom sur la cible (plus de cloche ni de rattrapage lissé
-  //  visible à la pose / en fin de fusion). ON → comportement d'origine (lissage 0.12).
-  if(DEZOOM_ROT) camera.zoom += (zoomGoal-camera.zoom)*0.12*TS;
-  else            camera.zoom = targetCamZ;
+  // v88 (0002) : le lissage est TOUJOURS actif (retour au comportement d'origine). Le bouton
+  //  DEZOOM_ROT n'agit QUE sur la cloche (zoomGoal ci-dessus), jamais sur ce lissage.
+  camera.zoom += (zoomGoal-camera.zoom)*0.12*TS;
   camera.position.y += (targetCamY-camera.position.y)*0.08*TS;
   camera.position.x += (xGoal-camera.position.x)*0.12*TS;
   camera.updateProjectionMatrix();                    // ortho : le zoom n'agit qu'après recalcul du frustum
@@ -2798,9 +2830,15 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
       const _m=measureVisibleSpanY();
       let _effRows=_m.nv?(_m.spanY/CELL_W+1):ROWS; _effRows=Math.max(3,Math.min(ROWS,_effRows));
       const _rowsTxt=' vis '+_m.nv+' Y'+_m.spanY.toFixed(1)+' X'+_m.spanX.toFixed(1)+' eff'+_effRows.toFixed(1)+'r';
+      // v0004 DIAG : emprise logique DÉPART→ARRIVÉE du dernier swipe (mesure le saut de zoom à la pose).
+      let _diag='';
+      if(window.__navDiag){ const d=window.__navDiag;
+        const gh=s=>{ let er=s.nv?Math.max(3,Math.min(ROWS,s.spanY/CELL_W+1)):ROWS; return (ROWS/er); };
+        _diag='\nDÉP Y'+d.from.spanY.toFixed(1)+' gH'+gh(d.from).toFixed(2)
+             +' → ARR Y'+d.to.spanY.toFixed(1)+' gH'+gh(d.to).toFixed(2); }
       _ib.textContent = (pairs.length
         ? 'inter-banc: '+pairs.map(p=>'r'+p.row+'('+p.icon+')').join(' ')
-        : 'inter-banc: —') + _rowsTxt; } }
+        : 'inter-banc: —') + _rowsTxt + _diag; } }
   // v60a : rendu routé via la fondation factory (un seul système → iso-v5).
   SYS.render();
 }
