@@ -512,9 +512,9 @@
     </div>
     <button id="undoBtnG" class="undo-btn" aria-label="Annuler">↶</button>
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
-    <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0007→0008→0009…).
+    <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0010→0011→0012…).
          Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
-    <span id="verTag">0007</span>
+    <span id="verTag">0010</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
@@ -522,9 +522,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════════╗
-   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0007                     ║
+   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0010                     ║
    ║  RÈGLE : à CHAQUE nouvelle génération de code, INCRÉMENTER l'indice         ║
-   ║  (0007→0008→0009…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
+   ║  (0010→0011→0012…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
    ║  doivent toujours correspondre. Permet de vérifier sur device que GitHub    ║
    ║  a servi la bonne version malgré la latence.                                ║
    ╚══════════════════════════════════════════════════════════════════════════╝ */
@@ -1320,24 +1320,42 @@ function nextLiveBoard(dir){
   return -1;   // aucun autre plateau vivant
 }
 function navRight(){ if(B.busy||B.isAnimating||swapAnim||rotAnim)return; const tgt=nextLiveBoard(1); if(tgt<0)return;
-  window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG
+  window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG (lecture seule)
   B.busy=true;B.isAnimating=true;B.navDir=1;B.navTarget=tgt;
   showPorteProxies();
-  // v0005 : cible de zoom = emprise d'ARRIVÉE, posée AVANT que atRest ne gèle refreshZoom.
-  //  Le lissage (animate) y glisse pendant la rotation → plus de saut à la pose.
-  { const tt=zoomTargetFromSpan(window.__navDiag.to); targetCamZ=tt.z; targetCamY=tt.camY; targetCamX=tt.camX; zoomSoloZ=tt.z; }
   B.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt)); }
 function navLeft(){ if(B.busy||B.isAnimating||swapAnim||rotAnim)return; const tgt=nextLiveBoard(-1); if(tgt<0)return;
-  window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG
+  window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG (lecture seule)
   B.busy=true;B.isAnimating=true;B.navDir=-1;B.navTarget=tgt;
   showPorteProxies();
-  { const tt=zoomTargetFromSpan(window.__navDiag.to); targetCamZ=tt.z; targetCamY=tt.camY; targetCamX=tt.camX; zoomSoloZ=tt.z; }
   B.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt)); }
-function onRotationComplete(){ B.currentBoard=B.navTarget; B.navDir=0;
-  const _zPosed=targetCamZ, _zCam=camera.zoom;                       // v0006 DIAG : cible posée + zoom réel à la pose
-  B.spin.quaternion.copy(B.targetQuat); assignFaces(); hidePorteProxies(); B.isAnimating=false; B.busy=false; updateUI(); refreshZoom();
-  window.__poseDiag={ posed:_zPosed, cam:_zCam, final:targetCamZ };  // v0006 DIAG : final = recalcul refreshZoom
-  setTimeout(checkFusions,100); }
+// v89 : complétion de rotation PAR BANC (le tapis-roulant fait tourner les 2 bancs ensemble,
+//  chacun termine indépendamment). bk = index du banc qui vient de finir sa rotation.
+function onRotationCompleteBank(bk){
+  const bb=banks[bk];
+  bb.currentBoard=bb.navTarget; bb.navDir=0;
+  bb.spin.quaternion.copy(bb.targetQuat);
+  bb.isAnimating=false; bb.busy=false;
+  // recale l'affichage seulement quand TOUS les bancs sont au repos (évite recalculs partiels)
+  if(!banks.some(x=>x.isAnimating)){ assignFaces(); hidePorteProxies(); updateUI(); refreshZoom();
+    setTimeout(checkFusions,100); }
+}
+function onRotationComplete(){ onRotationCompleteBank(activeBank); }
+// v89 : TAPIS-ROULANT — un swipe fait tourner LES DEUX bancs dans le même sens (Hyp.1 couplage visuel).
+//  Chaque banc wrap sur lui-même ; rien ne traverse l'inter-banc (transfert réel = palier ultérieur).
+function navBoth(dir){
+  if(swapAnim||rotAnim||migrating) return;
+  if(banks.some(b=>b.busy||b.isAnimating)) return;        // une rotation à la fois
+  const prev=activeBank;
+  showPorteProxies();
+  for(let bk=0; bk<BANKS; bk++){
+    const bb=banks[bk];
+    const tgt=mod(bb.currentBoard+dir);                   // tapis : avance d'1 cran, wrap (pas de saut de plateau caduc)
+    bb.busy=true; bb.isAnimating=true; bb.navDir=dir; bb.navTarget=tgt;
+    bb.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt));
+  }
+  setActiveBank(prev);
+}
 
 function updateUI(){
   // v82 : chaque jeu de dots reflète le currentBoard de SON banc.
@@ -1724,7 +1742,7 @@ canvas.addEventListener('pointerup',e=>{
     if(!dragging){
       // v60a2 : bi-layer retiré → le geste de bascule-layer est NEUTRE (ne fait plus rien).
       // v85 : VERTICAL ample → rotation cube (changer de plateau). Geste haut/bas, plus gauche/droite.
-      if(Math.abs(ndy)>=40 && Math.abs(ndy)>Math.abs(ndx)){ ndy>0?navRight():navLeft(); return; }
+      if(Math.abs(ndy)>=40 && Math.abs(ndy)>Math.abs(ndx)){ ndy>0?navBoth(1):navBoth(-1); return; }   // v89 tapis : 2 bancs ensemble
     }
   }
   if(!dragging){ return; }
@@ -1776,11 +1794,11 @@ navBarEl.addEventListener('pointerdown',e=>{ dotDownX=e.clientX; dotMoved=false;
 navBarEl.addEventListener('pointermove',e=>{ if(dotDownX==null)return; if(Math.abs(e.clientX-dotDownX)>20){ dotMoved=true; } });
 navBarEl.addEventListener('pointerup',e=>{
   if(dotDownX==null)return; const dx=e.clientX-dotDownX; dotDownX=null;
-  if(dotMoved && Math.abs(dx)>=20){ if(!B.busy&&!B.isAnimating){ dx>0?navRight():navLeft(); } e.stopPropagation(); }
+  if(dotMoved && Math.abs(dx)>=20){ if(!banks.some(b=>b.busy||b.isAnimating)){ dx>0?navBoth(1):navBoth(-1); } e.stopPropagation(); }   // v89 tapis
 });
 navBarEl.addEventListener('pointercancel',()=>{ dotDownX=null; });
 // chevrons : tap = nav d'un cran
-navBarEl.querySelectorAll('.chev').forEach((c,idx)=>c.addEventListener('click',e=>{ if(B.busy||B.isAnimating)return; idx===0?navLeft():navRight(); e.stopPropagation(); }));
+navBarEl.querySelectorAll('.chev').forEach((c,idx)=>c.addEventListener('click',e=>{ if(banks.some(b=>b.busy||b.isAnimating))return; idx===0?navBoth(-1):navBoth(1); e.stopPropagation(); }));   // v89 tapis
 
 // ════════════════════════════════════════════
 //  FUSION — portée du V4 : faces exposées qui se touchent, identiques (icône+état)
@@ -2720,10 +2738,13 @@ const SYS = {
   }
 };
 function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const dtRaw=t-last; last=t; const dt=dtRaw*TS; tScaled+=dt;
-  if(B.isAnimating){
-    // ROTATION DU CUBE : slerp doux vers l'orientation cible (façon mada)
-    B.spin.quaternion.slerp(B.targetQuat,0.12*TS);
-    if(1-Math.abs(B.spin.quaternion.dot(B.targetQuat))<0.0001){ B.spin.quaternion.copy(B.targetQuat); onRotationComplete(); }
+  // v89 : ROTATION PAR BANC — chaque banc animé slerpe vers sa cible et finit indépendamment.
+  //  (tapis-roulant : navBoth a armé les 2 ; le swipe mono-banc n'en arme qu'un → identique à avant.)
+  for(let bk=0; bk<BANKS; bk++){ const bb=banks[bk];
+    if(bb.isAnimating){
+      bb.spin.quaternion.slerp(bb.targetQuat,0.12*TS);
+      if(1-Math.abs(bb.spin.quaternion.dot(bb.targetQuat))<0.0001){ bb.spin.quaternion.copy(bb.targetQuat); onRotationCompleteBank(bk); }
+    }
   }
   tickSwap(dt);
   tickRot(dt);
