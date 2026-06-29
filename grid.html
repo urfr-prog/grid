@@ -474,12 +474,8 @@
   <canvas id="c"></canvas>
   <div id="probe75" style="position:absolute;top:env(safe-area-inset-top,4px);left:8px;z-index:9999;font:10px/1.4 monospace;color:#5fd;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:4px;pointer-events:none;white-space:pre">sonde v75</div>
   <div id="probeIB" style="position:absolute;top:env(safe-area-inset-top,4px);right:8px;z-index:9999;font:10px/1.4 monospace;color:#fd5;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:4px;pointer-events:none;white-space:pre">inter-banc: —</div>
-  <!-- v86 réglage temporaire : curseur fillFactor (remplissage zoom adaptatif). À retirer une fois la valeur figée. -->
-  <div id="fillBox" style="position:absolute;top:calc(env(safe-area-inset-top,4px) + 26px);right:8px;z-index:9999;font:10px monospace;color:#9fe;background:rgba(0,0,0,.7);padding:4px 8px;border-radius:6px;display:flex;align-items:center;gap:6px">
-    <span>fill</span>
-    <input id="fillSlider" type="range" min="100" max="160" value="100" style="width:120px;accent-color:#22d3ee">
-    <span id="fillVal">1.00</span>
-  </div>
+  <!-- v88 : bouton on/off du dézoom-cloche pendant rotation carrousel. -->
+  <button id="dezoomBtn" style="position:absolute;top:calc(env(safe-area-inset-top,4px) + 26px);right:8px;z-index:9999;font:10px monospace;color:#9fe;background:rgba(0,0,0,.7);border:1px solid #22d3ee;padding:5px 9px;border-radius:6px">dézoom: ON</button>
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
   </div><!-- /#sysA -->
@@ -2537,7 +2533,7 @@ let coordYShift=0;            // décalage horizontal-écran (axe Y logique) ver
 // v86 P2-zoom : emprise verticale RÉELLE des dominos visibles (Y-monde), commune aux 2 bancs.
 //  Lue à la fois par la sonde ET par refreshZoom → une seule source de vérité. Retourne {spanY,nv}.
 const _spanWP=new THREE.Vector3();
-let fillFactor=1.0;   // v86 réglage : facteur de remplissage du zoom adaptatif, piloté par le slider temporaire
+const fillFactor=1.0;   // v88 : figé à 1.0 (slider retiré — inopérant car bridé par la largeur/médiane fixe)
 function measureVisibleSpanY(){
   let ymin=Infinity, ymax=-Infinity, xmin=Infinity, xmax=-Infinity, nv=0, halfMed=0;
   const median=(BANKS>1)?(BANK_GAP/2):0;                // médiane monde = milieu des 2 bancs
@@ -2835,11 +2831,13 @@ const SYSTEMS = [sysA];
   const updSpeed=()=>{ TS=Math.max(0.05, sl.value/100); lab.textContent=TS.toFixed(2)+'×'; };
   sl.addEventListener('input',updSpeed); updSpeed();
 
-  // v86 réglage temporaire : slider fillFactor (remplissage du zoom adaptatif).
-  { const fsl=document.getElementById('fillSlider'), fval=document.getElementById('fillVal');
-    if(fsl){ const updFill=()=>{ fillFactor=fsl.value/100; fval.textContent=fillFactor.toFixed(2);
-        if(typeof refreshZoom==='function') refreshZoom(); };
-      fsl.addEventListener('input',updFill); updFill(); } }
+  // v88 : bouton on/off du dézoom-cloche (remplace le slider fillFactor figé à 1.0).
+  { const dzb=document.getElementById('dezoomBtn');
+    if(dzb){ dzb.addEventListener('click',()=>{
+        DEZOOM_ROT=!DEZOOM_ROT;
+        dzb.textContent='dézoom: '+(DEZOOM_ROT?'ON':'OFF');
+        dzb.style.opacity=DEZOOM_ROT?'1':'.5';
+      }); } }
 
   // — v82 : OVERLAY COORDONNÉES (on/off) — flag global lu par animate de chaque système —
   const coordBtn=document.getElementById('coordBtn');
