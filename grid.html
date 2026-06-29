@@ -2901,6 +2901,24 @@ const SYSTEMS = [sysA];
         '   menuBtn @'+(br?fmt(br.left)+','+fmt(br.top):'—')+belowScreen+'\n'+
       'menuBtn EFP = '+hit+((hit!=='menuToggle'&&hit!=='—')?'  ⚠':'  ✓');
   }
+
+  // v86 : correctif auto anti-décalage 59px (S4 winpx appliqué sans bouton)
+  // borne html/body à la hauteur visible exacte en px puis scroll0, rejoué init+resize+orientation
+  function fixOffset(){
+    document.documentElement.style.height = window.innerHeight + 'px';
+    document.body.style.height            = window.innerHeight + 'px';
+    document.body.style.minHeight         = '0';
+    window.scrollTo(0,0);
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+  }
+  fixOffset();
+  window.addEventListener('resize', fixOffset);
+  window.addEventListener('orientationchange', function(){
+    fixOffset(); setTimeout(fixOffset,150); setTimeout(fixOffset,400);
+  });
+  if(window.visualViewport){ window.visualViewport.addEventListener('resize', fixOffset); }
+
   setInterval(tick, 250);
 })();
 </script>
