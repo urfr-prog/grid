@@ -1645,7 +1645,7 @@ canvas.addEventListener('pointerdown',e=>{
     if(g){ const hit=raycaster.intersectObject(g,false); if(hit.length){ const lp=g.worldToLocal(hit[0].point.clone()); impact=lp.x.toFixed(1)+','+lp.y.toFixed(1); } }
     const cb=curBoard(); let cnt=0; let poss=[];
     cb.forEach((p,i)=>{ if(p&&p.mesh){ cnt++; if(poss.length<6) poss.push(p.mesh.position.x.toFixed(1)+'/'+p.mesh.position.y.toFixed(1)); } });
-    const _p=document.getElementById('probe75'); if(_p) _p.textContent='imp='+impact+' nPieces='+cnt+' pos:'+poss.join(' ');
+    const _p=document.getElementById('probe75'); if(_p) _p.textContent='';   // v86 : sonde gauche retirée
   })();
   // Si une pièce flotte (transfert en cours) : ce geste servira à naviguer (swipe) ou déposer (tap).
   if(lockedPiece){ downX=LX(e); downY=LY(e); downT=Date.now(); moved=false; dragging=true; dragAxis=null; return; }
@@ -2736,13 +2736,16 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // v83 P5-0 : SONDE INTER-BANC (lecture seule). Affiche les paires de bord détectées, sans rien fusionner.
   { const _ib=document.getElementById('probeIB');
     if(_ib){ const pairs=interBankPairs();
-      // v86 sonde rows (lecture seule, zéro impact zoom) : nb de rangées occupées par banc → max commun.
+      // v86 sonde SPAN (lecture seule, zéro impact zoom) : amplitude rangées occupées par banc → max commun.
       const _gA = boards[bankKey(banks[0].currentLayer, banks[0].currentBoard, 0)];
       const _gB = boards[bankKey(banks[1].currentLayer, banks[1].currentBoard, 1)];
-      const _countRows = g => { if(!g) return 0; let n=0;
-        for(let r=0;r<ROWS;r++){ for(let c=0;c<COLS;c++){ if(g[r*COLS+c]){ n++; break; } } } return n; };
-      const _r0=_countRows(_gA), _r1=_countRows(_gB), _rmax=Math.max(_r0,_r1);
-      const _rowsTxt='  rows '+_r0+'/'+_r1+'→'+_rmax;
+      const _span = g => { if(!g) return 0; let mn=-1,mx=-1;
+        for(let r=0;r<ROWS;r++){ let occ=false;
+          for(let c=0;c<COLS;c++){ if(g[r*COLS+c]){ occ=true; break; } }
+          if(occ){ if(mn<0)mn=r; mx=r; } }
+        return mn<0 ? 0 : (mx-mn+1); };
+      const _s0=_span(_gA), _s1=_span(_gB), _smax=Math.max(_s0,_s1);
+      const _rowsTxt='  span '+_s0+'/'+_s1+'→'+_smax;
       _ib.textContent = (pairs.length
         ? 'inter-banc: '+pairs.map(p=>'r'+p.row+'('+p.icon+')').join(' ')
         : 'inter-banc: —') + _rowsTxt; } }
