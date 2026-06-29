@@ -2736,9 +2736,16 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // v83 P5-0 : SONDE INTER-BANC (lecture seule). Affiche les paires de bord détectées, sans rien fusionner.
   { const _ib=document.getElementById('probeIB');
     if(_ib){ const pairs=interBankPairs();
-      _ib.textContent = pairs.length
+      // v86 sonde rows (lecture seule, zéro impact zoom) : nb de rangées occupées par banc → max commun.
+      const _gA = boards[bankKey(banks[0].currentLayer, banks[0].currentBoard, 0)];
+      const _gB = boards[bankKey(banks[1].currentLayer, banks[1].currentBoard, 1)];
+      const _countRows = g => { if(!g) return 0; let n=0;
+        for(let r=0;r<ROWS;r++){ for(let c=0;c<COLS;c++){ if(g[r*COLS+c]){ n++; break; } } } return n; };
+      const _r0=_countRows(_gA), _r1=_countRows(_gB), _rmax=Math.max(_r0,_r1);
+      const _rowsTxt='  rows '+_r0+'/'+_r1+'→'+_rmax;
+      _ib.textContent = (pairs.length
         ? 'inter-banc: '+pairs.map(p=>'r'+p.row+'('+p.icon+')').join(' ')
-        : 'inter-banc: —'; } }
+        : 'inter-banc: —') + _rowsTxt; } }
   // v60a : rendu routé via la fondation factory (un seul système → iso-v5).
   SYS.render();
 }
