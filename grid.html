@@ -2736,16 +2736,19 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // v83 P5-0 : SONDE INTER-BANC (lecture seule). Affiche les paires de bord détectées, sans rien fusionner.
   { const _ib=document.getElementById('probeIB');
     if(_ib){ const pairs=interBankPairs();
-      // v86 sonde SPAN (lecture seule, zéro impact zoom) : amplitude rangées occupées par banc → max commun.
-      const _gA = boards[bankKey(banks[0].currentLayer, banks[0].currentBoard, 0)];
-      const _gB = boards[bankKey(banks[1].currentLayer, banks[1].currentBoard, 1)];
-      const _span = g => { if(!g) return 0; let mn=-1,mx=-1;
-        for(let r=0;r<ROWS;r++){ let occ=false;
-          for(let c=0;c<COLS;c++){ if(g[r*COLS+c]){ occ=true; break; } }
-          if(occ){ if(mn<0)mn=r; mx=r; } }
-        return mn<0 ? 0 : (mx-mn+1); };
-      const _s0=_span(_gA), _s1=_span(_gB), _smax=Math.max(_s0,_s1);
-      const _rowsTxt='  span '+_s0+'/'+_s1+'→'+_smax;
+      // v86 sonde EMPRISE VISIBLE (lecture seule, zéro impact zoom) : Y-monde min/max des meshes
+      //  dominos réellement rendus (userData.isDomino && visible), peu importe face/layer/banc.
+      //  → mesure ce que l'œil voit, pas la grille logique. _wp réutilisé pour éviter les alloc/frame.
+      let _ymin=Infinity, _ymax=-Infinity, _nv=0;
+      const _wp=new THREE.Vector3();
+      scene.traverse(o=>{
+        if(o.userData && o.userData.isDomino && o.visible && o.parent && o.parent.visible){
+          o.getWorldPosition(_wp); _ymin=Math.min(_ymin,_wp.y); _ymax=Math.max(_ymax,_wp.y); _nv++;
+        }
+      });
+      const _spanW = _nv ? (_ymax-_ymin) : 0;                 // emprise verticale en unités-monde
+      const _spanRows = _nv ? (_spanW/CELL_W + 1) : 0;        // convertie en "rangées" (1 domino = 1 rangée)
+      const _rowsTxt = '  vis '+_nv+' spanY '+_spanW.toFixed(2)+' ≈'+_spanRows.toFixed(1)+'r';
       _ib.textContent = (pairs.length
         ? 'inter-banc: '+pairs.map(p=>'r'+p.row+'('+p.icon+')').join(' ')
         : 'inter-banc: —') + _rowsTxt; } }
