@@ -2558,6 +2558,11 @@ function refreshZoom(boardIdx){
   //  des 2 bancs ensemble → une seule échelle + un seul recentrage → alignement inter-banc préservé.
   //  On grossit jusqu'à ce que l'emprise touche le cadre, en prenant le besoin le PLUS CONTRAIGNANT
   //  (hauteur ou largeur). Plancher hauteur 3 rangées. Plafond = cadrage plein de fitCamera (jamais sous).
+  // v87 FIX transitoire : on ne RECALCULE l'emprise qu'AU REPOS. Pendant un glissement/rotation/fusion,
+  //  des pièces traversent la médiane et gonflent l'emprise (X transitoire) → le zoom bridait à tort ou
+  //  sortait du cadre. Au repos seulement → mesure stable. En mouvement → on garde la dernière valeur.
+  const atRest = !(banks.some(bk=>bk.busy||bk.isAnimating) || swapAnim || migrating || rotAnim || lockedPiece || sliding);
+  if(!atRest) return;                                   // gèle le zoom sur sa dernière valeur stable
   const m=measureVisibleSpanY();
   if(!m.nv){ zoomSoloZ=baseFitZ; targetCamZ=baseFitZ; targetCamY=baseFitY;
              targetCamX=-PIVOT_X+((BANKS>1)?BANK_GAP/2:0); return; }
