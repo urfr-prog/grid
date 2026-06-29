@@ -2505,6 +2505,7 @@ function fitCamera(){
   const obsZ=CAM_Z;
   // v36→v83 : baseFitZ stocke désormais le ZOOM de base (pas une distance). refreshZoom le réutilise.
   baseFitZ=camera.zoom; baseFitY=offY; baseWorldPerPx=worldPerPx; vFOVcache=0;
+  baseZoomW=zoomW;   // v86 P2-zoom : PLAFOND LARGEUR — le zoom adaptatif ne doit JAMAIS le dépasser (sinon débord latéral)
   camera.position.set(offX,offY,obsZ); camera.lookAt(offX,offY,0);
   camera.updateProjectionMatrix();
   refreshZoom();                                           // recale la cible de zoom sur le plateau courant
@@ -2514,7 +2515,7 @@ function fitCamera(){
 // (plateaux allégés), plus on s'approche. Lissé dans animate (comme targetCamZ de K5).
 // v83 P1 : baseFitZ / targetCamZ / zoomSoloZ portent désormais un FACTEUR DE ZOOM ortho (≈1),
 //  plus une distance. fitCamera renseigne la vraie valeur dès le premier appel.
-let baseFitZ=1, baseFitY=0, baseWorldPerPx=0.02, vFOVcache=0;
+let baseFitZ=1, baseFitY=0, baseWorldPerPx=0.02, vFOVcache=0, baseZoomW=1;
 let targetCamZ=1, targetCamY=0, targetCamX=-PIVOT_X;
 // v60l : COORDINATION INTER-SYSTÈMES. refreshZoom publie ici l'échelle "solo" et l'emprise
 // brute de CE système ; la coordination (dans animate) lit l'autre système via SYSTEMS et
@@ -2548,8 +2549,12 @@ function refreshZoom(boardIdx){
   let effRows = m.nv ? (m.spanY/CELL_W + 1) : ROWS;
   effRows = Math.max(3, Math.min(ROWS, effRows));      // plancher 3, plafond ROWS(5)
   const grow = (ROWS*CELL_W) / (effRows*CELL_W);        // = FACE_H / empriseEff ≥ 1
-  zoomSoloZ = baseFitZ * grow;
-  targetCamZ = baseFitZ * grow;                         // grossit quand l'emprise < pleine grille
+  // v86 FIX débord : le zoom voulu par la HAUTEUR est plafonné par la LARGEUR (baseZoomW).
+  //  Sinon en grossissant pour remplir la hauteur, les 2 bancs + gap sortent du cadre latéralement.
+  const wanted = baseFitZ * grow;
+  const z = Math.min(wanted, baseZoomW);                // jamais plus large que ce que l'écran permet
+  zoomSoloZ = z;
+  targetCamZ = z;                                       // grossit en hauteur SANS déborder en largeur
   targetCamY = baseFitY;                                // centre Y inchangé (recentré sur la croix)
   targetCamX = -PIVOT_X + ((BANKS>1)?BANK_GAP/2:0);     // milieu des 2 bancs (= offX de fitCamera)
 }
