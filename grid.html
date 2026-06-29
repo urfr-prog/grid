@@ -501,6 +501,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+let DEZOOM_ROT = false;   // v88 : on/off du dézoom-cloche pendant rotation/fusion (OFF = zoom figé, sans cloche). Scope global : lu par animate ET par le bouton de barre.
 const COLS=4, ROWS=5, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 // ─── v49 : SECOND LAYER (bridage) ────────────────────────────────────────────
 //  Un plan jumeau en PROFONDEUR derrière chaque face du cube. La rotation cube
@@ -850,7 +851,6 @@ const canvas=$('c');
 // portes, animation, rotation cube) est regroupé dans un objet Bank. `B` pointe le banc
 // actif ; toute la logique de jeu lit/écrit via B.*. Avec BANKS=1, état identique à v68.
 const BANKS = 2;                        // v74 Pas A : deux bancs (banc 1 = faces vides qui tournent)
-let DEZOOM_ROT = true;                   // v88 : on/off du dézoom-cloche pendant rotation carrousel
 function makeBank(){ return {
   currentBoard:0,                       // plateau (face) courant de ce banc
   currentLayer:0,                       // 0 = avant, 1 = arrière (par-banc)
@@ -2757,7 +2757,10 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // v41b/v81 : X partage la même cloche en mono-banc ; en multi-banc la caméra reste centrée stable.
   const xGoal=(BANKS>1)?targetCamX:(targetCamX + bell*(-PIVOT_X-targetCamX));
   // v83 P1 : on lisse le ZOOM (pas la distance Z, qui reste fixe = neutre en ortho).
-  camera.zoom += (zoomGoal-camera.zoom)*0.12*TS;
+  // v88 : DEZOOM OFF → on SNAPPE le zoom sur la cible (plus de cloche ni de rattrapage lissé
+  //  visible à la pose / en fin de fusion). ON → comportement d'origine (lissage 0.12).
+  if(DEZOOM_ROT) camera.zoom += (zoomGoal-camera.zoom)*0.12*TS;
+  else            camera.zoom = targetCamZ;
   camera.position.y += (targetCamY-camera.position.y)*0.08*TS;
   camera.position.x += (xGoal-camera.position.x)*0.12*TS;
   camera.updateProjectionMatrix();                    // ortho : le zoom n'agit qu'après recalcul du frustum
@@ -2832,7 +2835,8 @@ const SYSTEMS = [sysA];
 
   // v88 : bouton on/off du dézoom-cloche (dans la barre du bas, style .opt-btn).
   { const dzb=document.getElementById('dezoomBtn');
-    if(dzb){ dzb.addEventListener('click',()=>{
+    if(dzb){ dzb.classList.toggle('off',!DEZOOM_ROT);   // reflète l'état initial
+      dzb.addEventListener('click',()=>{
         DEZOOM_ROT=!DEZOOM_ROT;
         dzb.classList.toggle('off',!DEZOOM_ROT);
       }); } }
