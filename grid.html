@@ -512,9 +512,9 @@
     </div>
     <button id="undoBtnG" class="undo-btn" aria-label="Annuler">↶</button>
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
-    <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0005→0006→0007…).
+    <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0006→0007→0008…).
          Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
-    <span id="verTag">0005</span>
+    <span id="verTag">0006</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
@@ -522,9 +522,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════════╗
-   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0005                     ║
+   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0006                     ║
    ║  RÈGLE : à CHAQUE nouvelle génération de code, INCRÉMENTER l'indice         ║
-   ║  (0005→0006→0007…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
+   ║  (0006→0007→0008…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
    ║  doivent toujours correspondre. Permet de vérifier sur device que GitHub    ║
    ║  a servi la bonne version malgré la latence.                                ║
    ╚══════════════════════════════════════════════════════════════════════════╝ */
@@ -1334,7 +1334,9 @@ function navLeft(){ if(B.busy||B.isAnimating||swapAnim||rotAnim)return; const tg
   { const tt=zoomTargetFromSpan(window.__navDiag.to); targetCamZ=tt.z; targetCamY=tt.camY; targetCamX=tt.camX; zoomSoloZ=tt.z; }
   B.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt)); }
 function onRotationComplete(){ B.currentBoard=B.navTarget; B.navDir=0;
+  const _zPosed=targetCamZ, _zCam=camera.zoom;                       // v0006 DIAG : cible posée + zoom réel à la pose
   B.spin.quaternion.copy(B.targetQuat); assignFaces(); hidePorteProxies(); B.isAnimating=false; B.busy=false; updateUI(); refreshZoom();
+  window.__poseDiag={ posed:_zPosed, cam:_zCam, final:targetCamZ };  // v0006 DIAG : final = recalcul refreshZoom
   setTimeout(checkFusions,100); }
 
 function updateUI(){
@@ -2857,6 +2859,8 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
         const gh=s=>{ let er=s.nv?Math.max(3,Math.min(ROWS,s.spanY/CELL_W+1)):ROWS; return (ROWS/er); };
         _diag='\nDÉP Y'+d.from.spanY.toFixed(1)+' gH'+gh(d.from).toFixed(2)
              +' → ARR Y'+d.to.spanY.toFixed(1)+' gH'+gh(d.to).toFixed(2); }
+      if(window.__poseDiag){ const q=window.__poseDiag;
+        _diag+='\nPOSE posé'+q.posed.toFixed(3)+' cam'+q.cam.toFixed(3)+' final'+q.final.toFixed(3); }
       _ib.textContent = (pairs.length
         ? 'inter-banc: '+pairs.map(p=>'r'+p.row+'('+p.icon+')').join(' ')
         : 'inter-banc: —') + _rowsTxt + _diag; } }
