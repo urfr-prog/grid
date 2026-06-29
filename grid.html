@@ -1431,15 +1431,10 @@ function applySlide(off){
 // (et non les positions wrappées, qui feraient osciller le zoom). On simule la rangée/colonne
 // après application des crans et on mesure son emprise ; le zoom principal s'y adapte par palier.
 function refreshZoomSlide(){
-  // v82 : ZOOM GELÉ pendant le glissement aussi. L'ancienne logique mono-banc
-  //  (targetCamY=baseFitY+cY*0.6) désalignait les 2 bancs dès qu'on glissait une pièce.
-  //  On pose le MÊME cadrage fixe que refreshZoom → la caméra ne bouge plus en glissant,
-  //  les 2 bancs restent alignés sur la grille complète. À ré-évaluer une fois le contenu
-  //  4×5 rangé validé device (on verra alors si un resserrage commun est souhaitable).
-  zoomSoloZ=baseFitZ;
-  targetCamZ=baseFitZ;
-  targetCamY=baseFitY;
-  targetCamX=-PIVOT_X + ((BANKS>1)?BANK_GAP/2:0);
+  // v86 P2-zoom : pendant le glissement on garde le MÊME cadrage adaptatif commun que refreshZoom
+  //  (mesure d'emprise des 2 bancs → échelle commune → alignement préservé). Le lissage dans animate
+  //  absorbe la variation d'emprise du slide → pas de saut. Délègue pour éviter tout code divergent.
+  refreshZoom();
 }
 
 // fin de glissement : calcule le nombre de crans et réécrit la grille logique (wrap-around)
@@ -2530,17 +2525,33 @@ let coordYShift=0;            // décalage horizontal-écran (axe Y logique) ver
 // v37 : refreshZoom(boardIdx) calcule la cible de zoom pour un plateau donné (par défaut le
 // courant). Appelé avec le plateau d'ARRIVÉE au lancement de la nav → le zoom vise déjà la
 // bonne échelle pendant la rotation : un seul geste continu, plus de "deux temps".
+// v86 P2-zoom : emprise verticale RÉELLE des dominos visibles (Y-monde), commune aux 2 bancs.
+//  Lue à la fois par la sonde ET par refreshZoom → une seule source de vérité. Retourne {spanY,nv}.
+const _spanWP=new THREE.Vector3();
+function measureVisibleSpanY(){
+  let ymin=Infinity, ymax=-Infinity, nv=0;
+  scene.traverse(o=>{
+    if(o.userData && o.userData.isDomino && o.visible && o.parent && o.parent.visible){
+      o.getWorldPosition(_spanWP); ymin=Math.min(ymin,_spanWP.y); ymax=Math.max(ymax,_spanWP.y); nv++;
+    }
+  });
+  return { spanY: nv?(ymax-ymin):0, nv };
+}
 function refreshZoom(boardIdx){
-  // v82 : ZOOM GELÉ. Plus de calcul adaptatif (max-rows abandonné). On cadre TOUJOURS sur
-  //  la grille complète des 2 bancs (5 rangées entières), à l'échelle fixe posée par fitCamera.
-  //  Conséquence : une rangée logique row a un y monde fixe et identique dans les 2 bancs ;
-  //  une case VIDE (row sans domino) occupe quand même sa ligne → row N fait face à row N,
-  //  vide ou pas. L'alignement inter-banc devient une propriété de la grille, pas du contenu.
-  //  boardIdx conservé pour compat signature (navigation), non utilisé tant que le zoom est gelé.
-  zoomSoloZ=baseFitZ;
-  targetCamZ=baseFitZ;                            // échelle pleine = grille entière, fixe
-  targetCamY=baseFitY;                            // centre Y du cadrage plein
-  targetCamX=-PIVOT_X + ((BANKS>1)?BANK_GAP/2:0); // milieu des 2 bancs (= offX de fitCamera)
+  // v86 P2-zoom : ZOOM ADAPTATIF COMMUN. On mesure l'emprise verticale RÉELLE des dominos visibles
+  //  (les 2 bancs ensemble → échelle commune → alignement inter-banc préservé, cf. raison du gel v82).
+  //  Moins les pièces s'étalent en hauteur, plus on grossit. Plancher 3 rangées (jamais plus gros).
+  //  Plafond = plein cadre (FACE_H) : on ne dézoome jamais sous le cadrage de base posé par fitCamera.
+  //  La largeur reste bornée en amont par Math.min(zoomW,zoomH) dans fitCamera (baseFitZ).
+  const m=measureVisibleSpanY();
+  // emprise en hauteur de cellule : span entre centres + 1 cellule (demi en haut + demi en bas).
+  let effRows = m.nv ? (m.spanY/CELL_W + 1) : ROWS;
+  effRows = Math.max(3, Math.min(ROWS, effRows));      // plancher 3, plafond ROWS(5)
+  const grow = (ROWS*CELL_W) / (effRows*CELL_W);        // = FACE_H / empriseEff ≥ 1
+  zoomSoloZ = baseFitZ * grow;
+  targetCamZ = baseFitZ * grow;                         // grossit quand l'emprise < pleine grille
+  targetCamY = baseFitY;                                // centre Y inchangé (recentré sur la croix)
+  targetCamX = -PIVOT_X + ((BANKS>1)?BANK_GAP/2:0);     // milieu des 2 bancs (= offX de fitCamera)
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); camera.zoom=1; camera.updateProjectionMatrix();
 // v86 : Palier 1 — correctif décalage 59px en paysage iOS (prouvé sonde v86).
@@ -2736,19 +2747,10 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   // v83 P5-0 : SONDE INTER-BANC (lecture seule). Affiche les paires de bord détectées, sans rien fusionner.
   { const _ib=document.getElementById('probeIB');
     if(_ib){ const pairs=interBankPairs();
-      // v86 sonde EMPRISE VISIBLE (lecture seule, zéro impact zoom) : Y-monde min/max des meshes
-      //  dominos réellement rendus (userData.isDomino && visible), peu importe face/layer/banc.
-      //  → mesure ce que l'œil voit, pas la grille logique. _wp réutilisé pour éviter les alloc/frame.
-      let _ymin=Infinity, _ymax=-Infinity, _nv=0;
-      const _wp=new THREE.Vector3();
-      scene.traverse(o=>{
-        if(o.userData && o.userData.isDomino && o.visible && o.parent && o.parent.visible){
-          o.getWorldPosition(_wp); _ymin=Math.min(_ymin,_wp.y); _ymax=Math.max(_ymax,_wp.y); _nv++;
-        }
-      });
-      const _spanW = _nv ? (_ymax-_ymin) : 0;                 // emprise verticale en unités-monde
-      const _spanRows = _nv ? (_spanW/CELL_W + 1) : 0;        // convertie en "rangées" (1 domino = 1 rangée)
-      const _rowsTxt = '  vis '+_nv+' spanY '+_spanW.toFixed(2)+' ≈'+_spanRows.toFixed(1)+'r';
+      // v86 sonde EMPRISE VISIBLE — lit la MÊME mesure que refreshZoom (source unique).
+      const _m=measureVisibleSpanY();
+      let _effRows=_m.nv?(_m.spanY/CELL_W+1):ROWS; _effRows=Math.max(3,Math.min(ROWS,_effRows));
+      const _rowsTxt=' vis '+_m.nv+' spanY '+_m.spanY.toFixed(2)+' eff'+_effRows.toFixed(1)+'r';
       _ib.textContent = (pairs.length
         ? 'inter-banc: '+pairs.map(p=>'r'+p.row+'('+p.icon+')').join(' ')
         : 'inter-banc: —') + _rowsTxt; } }
