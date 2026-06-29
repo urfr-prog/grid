@@ -474,8 +474,6 @@
   <canvas id="c"></canvas>
   <div id="probe75" style="position:absolute;top:env(safe-area-inset-top,4px);left:8px;z-index:9999;font:10px/1.4 monospace;color:#5fd;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:4px;pointer-events:none;white-space:pre">sonde v75</div>
   <div id="probeIB" style="position:absolute;top:env(safe-area-inset-top,4px);right:8px;z-index:9999;font:10px/1.4 monospace;color:#fd5;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:4px;pointer-events:none;white-space:pre">inter-banc: —</div>
-  <!-- v88 : bouton on/off du dézoom-cloche pendant rotation carrousel. -->
-  <button id="dezoomBtn" style="position:absolute;top:calc(env(safe-area-inset-top,4px) + 26px);right:8px;z-index:9999;font:10px monospace;color:#9fe;background:rgba(0,0,0,.7);border:1px solid #22d3ee;padding:5px 9px;border-radius:6px">dézoom: ON</button>
   <div class="toast" id="toast"></div>
   <div class="goal-tag" id="goalTag"></div>
   </div><!-- /#sysA -->
@@ -489,6 +487,7 @@
     <button id="coordBtn" class="opt-btn off" aria-label="Coordonnées">#</button>
     <button id="xhairBtn" class="opt-btn off" aria-label="Croix de construction">✛</button>
     <button id="medBtnG" class="opt-btn" aria-label="Médianes">▤</button>
+    <button id="dezoomBtn" class="opt-btn" aria-label="Dézoom rotation">🔍</button>
     <div id="slowmoG">
       <span style="opacity:0.7;">🐢</span>
       <input id="tsSliderG" type="range" min="5" max="150" value="100">
@@ -2831,12 +2830,11 @@ const SYSTEMS = [sysA];
   const updSpeed=()=>{ TS=Math.max(0.05, sl.value/100); lab.textContent=TS.toFixed(2)+'×'; };
   sl.addEventListener('input',updSpeed); updSpeed();
 
-  // v88 : bouton on/off du dézoom-cloche (remplace le slider fillFactor figé à 1.0).
+  // v88 : bouton on/off du dézoom-cloche (dans la barre du bas, style .opt-btn).
   { const dzb=document.getElementById('dezoomBtn');
     if(dzb){ dzb.addEventListener('click',()=>{
         DEZOOM_ROT=!DEZOOM_ROT;
-        dzb.textContent='dézoom: '+(DEZOOM_ROT?'ON':'OFF');
-        dzb.style.opacity=DEZOOM_ROT?'1':'.5';
+        dzb.classList.toggle('off',!DEZOOM_ROT);
       }); } }
 
   // — v82 : OVERLAY COORDONNÉES (on/off) — flag global lu par animate de chaque système —
