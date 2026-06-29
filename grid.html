@@ -390,6 +390,12 @@
   .opt-btn:hover { border-color:#22d3ee; color:#22d3ee; }
   .opt-btn:active { transform:scale(0.92); }
   .opt-btn.off { color:rgba(34,211,238,0.3); border-color:rgba(34,211,238,0.15); }
+  /* v0002 : état ACTIF franchement illuminé (cyan plein + halo) pour lecture immédiate ON/OFF */
+  .opt-btn.on { color:#22d3ee; border-color:#22d3ee;
+    background:rgba(34,211,238,0.16); box-shadow:0 0 10px rgba(34,211,238,0.55); }
+  /* v0002 : indice de version, petit et discret dans la barre */
+  #verTag { font-family:inherit; font-size:0.62rem; letter-spacing:1px;
+    color:rgba(34,211,238,0.5); padding:0 6px; align-self:center; user-select:none; }
   /* ─── v60j : MODE DEUX SYSTÈMES côte à côte ──────────────────────────────
      #stage couvre l'écran et pose les deux .sys côte à côte (gauche|droite).
      Chaque .sys est un demi-écran autonome ; ses éléments UI passent en
@@ -495,12 +501,22 @@
     </div>
     <button id="undoBtnG" class="undo-btn" aria-label="Annuler">↶</button>
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
+    <!-- v0002 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0001→0002→0003…).
+         Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
+    <span id="verTag">0002</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+/* ╔══════════════════════════════════════════════════════════════════════════╗
+   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0002                     ║
+   ║  RÈGLE : à CHAQUE nouvelle génération de code, INCRÉMENTER l'indice         ║
+   ║  (0002→0003→0004…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
+   ║  doivent toujours correspondre. Permet de vérifier sur device que GitHub    ║
+   ║  a servi la bonne version malgré la latence.                                ║
+   ╚══════════════════════════════════════════════════════════════════════════╝ */
 let DEZOOM_ROT = false;   // v88 : on/off du dézoom-cloche pendant rotation/fusion (OFF = zoom figé, sans cloche). Scope global : lu par animate ET par le bouton de barre.
 const COLS=4, ROWS=5, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 // ─── v49 : SECOND LAYER (bridage) ────────────────────────────────────────────
@@ -2833,20 +2849,24 @@ const SYSTEMS = [sysA];
   const updSpeed=()=>{ TS=Math.max(0.05, sl.value/100); lab.textContent=TS.toFixed(2)+'×'; };
   sl.addEventListener('input',updSpeed); updSpeed();
 
+  // v0002 : helper d'état visuel — actif => .on (illuminé), inactif => .off (grisé).
+  const setBtn=(el,active)=>{ if(!el)return; el.classList.toggle('on',!!active); el.classList.toggle('off',!active); };
+
   // v88 : bouton on/off du dézoom-cloche (dans la barre du bas, style .opt-btn).
   { const dzb=document.getElementById('dezoomBtn');
-    if(dzb){ dzb.classList.toggle('off',!DEZOOM_ROT);   // reflète l'état initial
+    if(dzb){ setBtn(dzb,DEZOOM_ROT);   // reflète l'état initial
       dzb.addEventListener('click',()=>{
         DEZOOM_ROT=!DEZOOM_ROT;
-        dzb.classList.toggle('off',!DEZOOM_ROT);
+        setBtn(dzb,DEZOOM_ROT);
       }); } }
 
   // — v82 : OVERLAY COORDONNÉES (on/off) — flag global lu par animate de chaque système —
   const coordBtn=document.getElementById('coordBtn');
   const coordLayer=document.getElementById('coordLayer');
+  setBtn(coordBtn,!!window.__coordOn);
   coordBtn.addEventListener('click',()=>{
     window.__coordOn=!window.__coordOn;
-    coordBtn.classList.toggle('off',!window.__coordOn);
+    setBtn(coordBtn,window.__coordOn);
     coordLayer.classList.toggle('on',!!window.__coordOn);
   });
 
@@ -2854,9 +2874,10 @@ const SYSTEMS = [sysA];
   let xhairOn=false;
   const xhBtn=document.getElementById('xhairBtn');
   const xhH=document.getElementById('xhairH'), xhV=document.getElementById('xhairV');
+  setBtn(xhBtn,xhairOn);
   xhBtn.addEventListener('click',()=>{
     xhairOn=!xhairOn;
-    xhBtn.classList.toggle('off',!xhairOn);
+    setBtn(xhBtn,xhairOn);
     xhH.classList.toggle('on',xhairOn); xhV.classList.toggle('on',xhairOn);
   });
 
@@ -2873,9 +2894,9 @@ const SYSTEMS = [sysA];
   // — médianes communes (on/off sur les deux) —
   let medOn=false;
   const med=document.getElementById('medBtnG');
-  med.classList.toggle('off',!medOn);
+  setBtn(med,medOn);
   med.addEventListener('click',()=>{
-    medOn=!medOn; med.classList.toggle('off',!medOn);
+    medOn=!medOn; setBtn(med,medOn);
     SYSTEMS.forEach(s=>s.setMedians(medOn));
   });
 
