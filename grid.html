@@ -2538,18 +2538,20 @@ let coordYShift=0;            // décalage horizontal-écran (axe Y logique) ver
 const _spanWP=new THREE.Vector3();
 let fillFactor=1.0;   // v86 réglage : facteur de remplissage du zoom adaptatif, piloté par le slider temporaire
 function measureVisibleSpanY(){
-  let ymin=Infinity, ymax=-Infinity, xmin=Infinity, xmax=-Infinity, nv=0;
+  let ymin=Infinity, ymax=-Infinity, xmin=Infinity, xmax=-Infinity, nv=0, halfMed=0;
+  const median=(BANKS>1)?(BANK_GAP/2):0;                // médiane monde = milieu des 2 bancs
   scene.traverse(o=>{
     if(o.userData && o.userData.isDomino && o.visible && o.parent && o.parent.visible){
       o.getWorldPosition(_spanWP);
       ymin=Math.min(ymin,_spanWP.y); ymax=Math.max(ymax,_spanWP.y);
-      xmin=Math.min(xmin,_spanWP.x); xmax=Math.max(xmax,_spanWP.x); nv++;
+      xmin=Math.min(xmin,_spanWP.x); xmax=Math.max(xmax,_spanWP.x);
+      halfMed=Math.max(halfMed, Math.abs(_spanWP.x - median)); nv++;
     }
   });
-  // centre = milieu de l'emprise (recentre la caméra) ; span = amplitude entre centres de dominos.
   return { nv,
     spanY: nv?(ymax-ymin):0, centerY: nv?((ymin+ymax)/2):0,
-    spanX: nv?(xmax-xmin):0, centerX: nv?((xmin+xmax)/2):0 };
+    spanX: nv?(xmax-xmin):0, centerX: nv?((xmin+xmax)/2):0,
+    halfSpanFromMedian: halfMed };
 }
 function refreshZoom(boardIdx){
   // v87 P2-zoom : ZOOM ADAPTATIF COMMUN sur l'EMPRISE RÉELLE (largeur ET hauteur) des dominos visibles
@@ -2562,18 +2564,21 @@ function refreshZoom(boardIdx){
   // — besoin HAUTEUR : emprise + 1 cellule (demi domino haut/bas), plancher 3 rangées —
   let effRows = Math.max(3, Math.min(ROWS, m.spanY/CELL_W + 1));
   const growH = (ROWS*CELL_W) / (effRows*CELL_W);        // grossissement permis par la hauteur (≥1)
-  // — besoin LARGEUR : emprise réelle + 1 cellule, rapportée à la largeur de grille pleine (baseSpanW) —
-  const effW = Math.max(CELL_W, m.spanX + CELL_W);       // jamais < 1 cellule
-  const growW = baseSpanW / effW;                        // grossissement permis par la largeur (≥1)
+  // — besoin LARGEUR : SYMÉTRIQUE autour de la médiane (BANK_GAP/2). On mesure l'écart max d'un domino
+  //  à la médiane → demi-largeur réelle. La médiane reste FIXE → chaque banc reste dans sa moitié,
+  //  aucun banc ne franchit la croix. (Recentrage X libre abandonné : il cassait le confinement.)
+  const median = (BANKS>1)?(BANK_GAP/2):0;              // = -PIVOT_X dans le repère caméra, cf. offX
+  const halfReal = Math.max(CELL_W/2, m.halfSpanFromMedian + CELL_W/2);  // demi-largeur + demi-domino
+  const effW = 2*halfReal;                             // largeur réelle symétrique
+  const growW = baseSpanW / effW;                      // grossissement permis par la largeur (≥1)
   // — le plus contraignant des deux : on ne grossit que jusqu'à ce que l'un des deux axes remplisse —
   const grow = Math.min(growH, growW);
   const z = baseFitZ * grow * fillFactor;                // fillFactor = réglage fin (slider temporaire)
   zoomSoloZ = z;
   targetCamZ = z;
-  // recentrage COMMUN sur le centre réel de l'emprise (X et Y) : les 2 bancs subissent la MÊME
-  //  transformation → alignement row N face à row N conservé. X n'est plus figé au milieu des bancs.
+  // recentrage Y sur le centre réel (vertical libre, OK) ; X RESTE au milieu des 2 bancs (médiane fixe).
   targetCamY = baseFitY + m.centerY;
-  targetCamX = m.centerX;
+  targetCamX = -PIVOT_X + ((BANKS>1)?BANK_GAP/2:0);
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); camera.zoom=1; camera.updateProjectionMatrix();
 // v86 : Palier 1 — correctif décalage 59px en paysage iOS (prouvé sonde v86).
