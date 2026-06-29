@@ -2538,12 +2538,27 @@ function refreshZoom(boardIdx){
   targetCamY=baseFitY;                            // centre Y du cadrage plein
   targetCamX=-PIVOT_X + ((BANKS>1)?BANK_GAP/2:0); // milieu des 2 bancs (= offX de fitCamera)
 }
-camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); camera.zoom=1; camera.updateProjectionMatrix(); fitCamera();
-window.addEventListener('resize',fitCamera);
-// v75 : iOS recale les dimensions APRÈS l'event orientationchange → on rejoue fitCamera en différé
+camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); camera.zoom=1; camera.updateProjectionMatrix();
+// v86 : Palier 1 — correctif décalage 59px en paysage iOS (prouvé sonde v86).
+// borne html/body à innerHeight px + scroll0 ; AVANT fitCamera pour qu'il lise la bonne hauteur.
+function fixOffset(){
+  document.documentElement.style.height = window.innerHeight + 'px';
+  document.body.style.height            = window.innerHeight + 'px';
+  document.body.style.minHeight         = '0';
+  window.scrollTo(0,0);
+  document.body.scrollTop = 0;
+  document.documentElement.scrollTop = 0;
+}
+fixOffset(); fitCamera();
+window.addEventListener('resize',()=>{ fixOffset(); fitCamera(); });
+// v75 : iOS recale les dimensions APRÈS l'event orientationchange → on rejoue en différé
 // (sinon en paysage le canvas/rect gardent l'état portrait → picking vise hors grille → "ne répond pas").
-window.addEventListener('orientationchange',()=>{ fitCamera(); setTimeout(fitCamera,150); setTimeout(fitCamera,400); });
-if(window.visualViewport){ window.visualViewport.addEventListener('resize',fitCamera); }
+window.addEventListener('orientationchange',()=>{
+  fixOffset(); fitCamera();
+  setTimeout(()=>{ fixOffset(); fitCamera(); },150);
+  setTimeout(()=>{ fixOffset(); fitCamera(); },400);
+});
+if(window.visualViewport){ window.visualViewport.addEventListener('resize',()=>{ fixOffset(); fitCamera(); }); }
 
 // ─── v60a : FONDATION FACTORY (palier mini, iso-v5) ──────────────────────────
 //  Étape préparatoire au split-screen indépendant. On enveloppe l'état PAR-SYSTÈME
@@ -2814,113 +2829,6 @@ const SYSTEMS = [sysA];
   setInterval(refreshUndo,400);   // garde l'état actif/désactivé à jour après chaque coup
 })();
 
-</script>
-
-<!-- ===== SONDE DIAGNOSTIC PAYSAGE — lecture seule + tests réversibles ===== -->
-<div id="probeLAND" style="position:fixed;left:50%;bottom:120px;transform:translateX(-50%);
-  z-index:99999;font:11px/1.5 monospace;color:#9fe;background:rgba(0,0,0,.82);
-  padding:8px 12px;border-radius:6px;pointer-events:none;white-space:pre;text-align:left;
-  border:1px solid #2a4">sonde paysage…</div>
-<!-- boutons de test : appliquent un correctif candidat sur #stage, réversible -->
-<div id="probeBtns" style="position:fixed;left:50%;bottom:60px;transform:translateX(-50%);
-  z-index:99999;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:90vw">
-</div>
-<script>
-(function(){
-  function fmt(n){ return (n==null?'—':Math.round(n)); }
-
-  var stage = document.getElementById('stage');
-  var scrollKiller = null;   // intervalle qui force le scroll à 0 (test S1)
-
-  // — tests ciblant la VRAIE cause : le body scrollé de 59 —
-  var tests = {
-    'RESET'      : function(){
-        if(scrollKiller){ clearInterval(scrollKiller); scrollKiller=null; }
-        location.reload();   // remet tout d'aplomb
-    },
-    'S1 scroll0' : function(){
-        // force le scroll à 0 en boucle (window + body + documentElement)
-        if(scrollKiller) clearInterval(scrollKiller);
-        scrollKiller=setInterval(function(){
-          window.scrollTo(0,0);
-          document.body.scrollTop=0;
-          document.documentElement.scrollTop=0;
-        },100);
-    },
-    'S2 once'    : function(){ window.scrollTo(0,0); document.body.scrollTop=0; document.documentElement.scrollTop=0; },
-    'S3 dvh'     : function(){ document.body.style.height='100dvh'; document.documentElement.style.height='100dvh'; window.scrollTo(0,0); },
-    'S4 winpx'   : function(){
-        // borne body à la hauteur visible exacte en pixels, puis scroll0
-        document.documentElement.style.height=window.innerHeight+'px';
-        document.body.style.height=window.innerHeight+'px';
-        document.body.style.minHeight='0';
-        window.scrollTo(0,0); document.body.scrollTop=0; document.documentElement.scrollTop=0;
-    }
-  };
-  var btnHost=document.getElementById('probeBtns');
-  Object.keys(tests).forEach(function(name){
-    var b=document.createElement('button');
-    b.textContent=name;
-    b.style.cssText='font:11px monospace;padding:6px 9px;border-radius:8px;border:1px solid #2a6;'+
-      'background:rgba(10,30,20,.9);color:#9fe;';
-    b.addEventListener('click',function(){ tests[name](); });
-    btnHost.appendChild(b);
-  });
-
-  function tick(){
-    var box = document.getElementById('probeLAND'); if(!box) return;
-    var sys  = document.getElementById('sysA');
-    var mTog = document.getElementById('menuToggle');
-
-    var iW = window.innerWidth, iH = window.innerHeight;
-    var orient = iW>=iH ? 'PAYSAGE' : 'portrait';
-
-    var bodyR = document.body.getBoundingClientRect();
-    var bScroll = document.body.scrollTop || document.documentElement.scrollTop || 0;
-
-    var sr  = stage ? stage.getBoundingClientRect() : null;
-    var cv = sys ? sys.querySelector('#c') : null;
-    var cr = cv ? cv.getBoundingClientRect() : null;
-    var br = mTog ? mTog.getBoundingClientRect() : null;
-    var hit = '—';
-    if(br){
-      var cx = br.left + br.width/2, cy = br.top + br.height/2;
-      var el = document.elementFromPoint(cx, cy);
-      hit = el ? (el.id || el.tagName) : 'null';
-    }
-    var belowScreen = (br && br.top >= iH) ? '  ⚠HORS' : '';
-
-    box.textContent =
-      orient+'  win '+iW+'x'+iH+'\n'+
-      'body rect @'+fmt(bodyR.left)+','+fmt(bodyR.top)+
-        '  h '+fmt(bodyR.height)+'  scroll '+fmt(bScroll)+'\n'+
-      'STAGE rect '+(sr?fmt(sr.width)+'x'+fmt(sr.height):'—')+
-        ' @'+(sr?fmt(sr.left)+','+fmt(sr.top):'—')+
-        ((sr&&Math.round(sr.top)===0)?'  ✓@0':'  ⚠décalé')+'\n'+
-      'canvas @'+(cr?fmt(cr.left)+','+fmt(cr.top):'—')+
-        '   menuBtn @'+(br?fmt(br.left)+','+fmt(br.top):'—')+belowScreen+'\n'+
-      'menuBtn EFP = '+hit+((hit!=='menuToggle'&&hit!=='—')?'  ⚠':'  ✓');
-  }
-
-  // v86 : correctif auto anti-décalage 59px (S4 winpx appliqué sans bouton)
-  // borne html/body à la hauteur visible exacte en px puis scroll0, rejoué init+resize+orientation
-  function fixOffset(){
-    document.documentElement.style.height = window.innerHeight + 'px';
-    document.body.style.height            = window.innerHeight + 'px';
-    document.body.style.minHeight         = '0';
-    window.scrollTo(0,0);
-    document.body.scrollTop = 0;
-    document.documentElement.scrollTop = 0;
-  }
-  fixOffset();
-  window.addEventListener('resize', fixOffset);
-  window.addEventListener('orientationchange', function(){
-    fixOffset(); setTimeout(fixOffset,150); setTimeout(fixOffset,400);
-  });
-  if(window.visualViewport){ window.visualViewport.addEventListener('resize', fixOffset); }
-
-  setInterval(tick, 250);
-})();
 </script>
 </body>
 </html>
