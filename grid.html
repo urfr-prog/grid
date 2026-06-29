@@ -855,6 +855,7 @@ const canvas=$('c');
 // portes, animation, rotation cube) est regroupé dans un objet Bank. `B` pointe le banc
 // actif ; toute la logique de jeu lit/écrit via B.*. Avec BANKS=1, état identique à v68.
 const BANKS = 2;                        // v74 Pas A : deux bancs (banc 1 = faces vides qui tournent)
+let DEZOOM_ROT = true;                   // v88 : on/off du dézoom-cloche pendant rotation carrousel
 function makeBank(){ return {
   currentBoard:0,                       // plateau (face) courant de ce banc
   currentLayer:0,                       // 0 = avant, 1 = arrière (par-banc)
@@ -2746,7 +2747,7 @@ function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime
   //  le cadre. Pendant le balayage, la grille pivote autour de PIVOT_X et occupe une largeur
   //  halfSweep*2 au lieu de spanW → on doit dézoomer du ratio correspondant.
   let zoomGoal=targetCamZ, bell=0;
-  if(B.isAnimating){
+  if(B.isAnimating && DEZOOM_ROT){
     const aspect=VW()/VH();
     const halfSweep=(FACE_W/2+Math.abs(PIVOT_X))+0.4*CELL_W;
     const sweptSpan=(BANKS>1)?(BANK_GAP+2*halfSweep):(2*halfSweep);   // largeur balayée au pic
