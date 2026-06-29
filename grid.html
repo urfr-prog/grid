@@ -2536,7 +2536,8 @@ function measureVisibleSpanY(){
       o.getWorldPosition(_spanWP); ymin=Math.min(ymin,_spanWP.y); ymax=Math.max(ymax,_spanWP.y); nv++;
     }
   });
-  return { spanY: nv?(ymax-ymin):0, nv };
+  // centreY = milieu de l'emprise (sert à recentrer la caméra sur la croix quand le contenu est décentré).
+  return { spanY: nv?(ymax-ymin):0, nv, centerY: nv?((ymin+ymax)/2):0 };
 }
 function refreshZoom(boardIdx){
   // v86 P2-zoom : ZOOM ADAPTATIF COMMUN. On mesure l'emprise verticale RÉELLE des dominos visibles
@@ -2555,7 +2556,10 @@ function refreshZoom(boardIdx){
   const z = Math.min(wanted, baseZoomW);                // jamais plus large que ce que l'écran permet
   zoomSoloZ = z;
   targetCamZ = z;                                       // grossit en hauteur SANS déborder en largeur
-  targetCamY = baseFitY;                                // centre Y inchangé (recentré sur la croix)
+  // v86 FIX centrage : on vise le CENTRE RÉEL de l'emprise verticale, pas y=0. Sinon, quand le contenu
+  //  est décentré (plus de pièces en haut), le grossissement le pousse hors-cadre au lieu de le ramener
+  //  sur la croix. Recentrage Y uniquement ; X reste au milieu des 2 bancs (préserve l'alignement).
+  targetCamY = baseFitY + m.centerY;
   targetCamX = -PIVOT_X + ((BANKS>1)?BANK_GAP/2:0);     // milieu des 2 bancs (= offX de fitCamera)
 }
 camera.position.set(0,0,CAM_Z); camera.lookAt(0,0,0); camera.zoom=1; camera.updateProjectionMatrix();
