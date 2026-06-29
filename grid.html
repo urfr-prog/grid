@@ -2492,7 +2492,11 @@ function fitCamera(){
   // largeur monde visible sans zoom = 2*aspect ; pour que (spanW*marginW) tienne dedans :
   const zoomW=(2*aspect)/(spanW*marginW);
   // garde-fou hauteur sur la zone utile (barre haut + boutons bas), inchangé en principe :
-  const topPx=58, botPx=92;
+  // v86 P2 : en PAYSAGE iPhone, l'overlay passe AU-DESSUS → on ne réserve plus rien (topPx/botPx=0).
+  //  Le zoom est alors piloté par la largeur (zoomW) pour exploiter tout l'espace, zoomH ne reste
+  //  qu'un garde-fou sur la hauteur écran PLEINE → la grille ne sort jamais du cadre. Portrait inchangé.
+  const isLandscape=window.innerWidth>=window.innerHeight;
+  const topPx=isLandscape?0:58, botPx=isLandscape?0:92;
   const usableH=Math.max(1,h-topPx-botPx);
   // hauteur monde visible sans zoom = 2 ; pour que FACE_H tienne dans la bande utile :
   const zoomH=2/(FACE_H*(h/usableH));
