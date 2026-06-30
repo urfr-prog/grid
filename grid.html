@@ -442,7 +442,7 @@
   #commonBar.hidden { transform:translateX(-50%) translateY(140%); opacity:0; pointer-events:none; }
   #menuToggle { position:fixed; left:calc(env(safe-area-inset-left,0px) + 6px);
     top:calc(env(safe-area-inset-top,0px) + 6px); z-index:401;
-    width:40px; height:40px; border-radius:50%; background:rgba(6,8,11,0.92);
+    width:40px; height:40px; border-radius:50%; background:rgba(22,23,38,0.85);
     border:1px solid rgba(34,211,238,0.35); color:rgba(34,211,238,0.8); font-size:1.1rem; line-height:1;
     cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit;
     transition:all 0.2s; backdrop-filter:blur(4px); padding:0; }
@@ -512,7 +512,7 @@
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
     <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0007→0008→0009…).
          Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
-    <span id="verTag">0013</span>
+    <span id="verTag">0014</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
@@ -520,7 +520,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════════╗
-   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0013                     ║
+   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0014                     ║
    ║  RÈGLE : à CHAQUE nouvelle génération de code, INCRÉMENTER l'indice         ║
    ║  (0007→0008→0009…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
    ║  doivent toujours correspondre. Permet de vérifier sur device que GitHub    ║
@@ -1898,6 +1898,11 @@ canvas.addEventListener('pointerup',e=>{
   }
   if(!dragging){ return; }
   dragging=false;
+  // v0014 : un micro-mouvement peut avoir lancé un slide inter-banc (donc fait FONDRE des
+  //  pièces de bord via setMeshOpacity) avant d'être finalement traité comme un TAP. Si on
+  //  sortait par la branche tap sans nettoyer, ces pièces restaient à demi-opacité avec un
+  //  _obase figé → dominos "fantômes" au rendu suivant. On restaure ici, sur TOUS les chemins.
+  if(dragMembers.length){ dragMembers.forEach(m=>{ if(m.p&&m.p.mesh) clearMeshOpacity(m.p.mesh); }); }
   const dx=LX(e)-downX, dy=LY(e)-downY, dt=Date.now()-downT;
   const dist=Math.hypot(dx,dy);
   // ── PIÈCE FLOTTANTE (transfert) : swipe horizontal = nav plateau ; tap = dépose ──
