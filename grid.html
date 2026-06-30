@@ -512,7 +512,7 @@
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
     <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0007→0008→0009…).
          Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
-    <span id="verTag">0015</span>
+    <span id="verTag">0016</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
@@ -520,13 +520,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════════╗
-   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0015                     ║
+   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0016                     ║
    ║  RÈGLE : à CHAQUE nouvelle génération de code, INCRÉMENTER l'indice         ║
    ║  (0007→0008→0009…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
    ║  doivent toujours correspondre. Permet de vérifier sur device que GitHub    ║
    ║  a servi la bonne version malgré la latence.                                ║
    ╚══════════════════════════════════════════════════════════════════════════╝ */
 let DEZOOM_ROT = true;   // v88 : on/off de la CLOCHE de rotation uniquement (le lissage reste toujours actif). true = comportement d'origine.
+let TWIN_ENABLED = false;   // v0016 : fusions twin (absorption miroir) désactivées. Passer à true pour réactiver.
 const COLS=4, ROWS=5, TOTAL=COLS*ROWS, CELL_W=1.0, NBOARDS=4;
 // ─── v49 : SECOND LAYER (bridage) ────────────────────────────────────────────
 //  Un plan jumeau en PROFONDEUR derrière chaque face du cube. La rotation cube
@@ -2132,7 +2133,8 @@ function checkFusions(){
   // Le plus fort en état reste à sa position, l'autre disparaît (glide vers gagnant + fade).
   // Pas de montée d'état. Ex-aequo d'état → _settle (lastMoved) le plus récent gagne.
   // Exclut régresseurs et Muets. Priorité APRÈS régresseur, AVANT chaîne/fusion simple/aimant.
-  { const tp = findTwinPair(d);
+  // v0016 : fusions twin DÉSACTIVÉES (TWIN_ENABLED=false). Réactivable sans regénérer.
+  if(TWIN_ENABLED){ const tp = findTwinPair(d);
     if(tp){ performTwinAbsorb(tp.i1, tp.i2); return; } }
   // CHAÎNE ADJACENTE À 3 (prioritaire sur la fusion simple) : un centre dont les DEUX
   // contacts opposés matchent (L-C-R ou T-C-B) fusionne les trois d'un coup, façon prisme.
