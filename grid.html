@@ -514,7 +514,7 @@
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
     <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0007→0008→0009…).
          Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
-    <span id="verTag">0011</span>
+    <span id="verTag">0012</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
@@ -522,7 +522,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════════╗
-   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0011                     ║
+   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0012                     ║
    ║  RÈGLE : à CHAQUE nouvelle génération de code, INCRÉMENTER l'indice         ║
    ║  (0007→0008→0009…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
    ║  doivent toujours correspondre. Permet de vérifier sur device que GitHub    ║
@@ -2007,7 +2007,14 @@ function interBankPairs(){
     let clear1=true; for(let c=0;c<colOf(i1);c++){ if(g1[row*COLS+c]){clear1=false;break;} }
     if(!clear0 || !clear1) continue;
     // p0 expose à DROITE (vers le gap), p1 expose à GAUCHE (vers le gap)
-    if(magnetMatch(p0,'right',p1,'left')){
+    // v0012 : DEUX voies de fusion inter-banc —
+    //   (1) FUSION ADJACENTE DE BASE : même icône exposée des deux côtés du contact
+    //       (identique à la fusion simple intra-banc, ligne SIMPLE FUSION de checkFusions),
+    //       hors paire de régresseurs. C'est la base du jeu : elle DOIT marcher à travers le gap.
+    //   (2) MAGNET : règle ajoutée par-dessus (montée/régresseur/cible).
+    const fR0=getExposedFace(p0,'right'), fL1=getExposedFace(p1,'left');
+    const baseFuse = fR0 && fL1 && fR0===fL1 && !(isRegress(p0)&&isRegress(p1));
+    if(baseFuse || magnetMatch(p0,'right',p1,'left')){
       out.push({row, i0, i1, icon:getExposedFace(p0,'right')});
     }
   }
