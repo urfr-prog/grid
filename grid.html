@@ -512,7 +512,7 @@
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
     <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0007→0008→0009…).
          Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
-    <span id="verTag">0014</span>
+    <span id="verTag">0015</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
@@ -520,7 +520,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════════╗
-   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0014                     ║
+   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0015                     ║
    ║  RÈGLE : à CHAQUE nouvelle génération de code, INCRÉMENTER l'indice         ║
    ║  (0007→0008→0009…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
    ║  doivent toujours correspondre. Permet de vérifier sur device que GitHub    ║
@@ -2011,6 +2011,23 @@ function interBankPairs(){
     if(baseFuse || magnetMatch(p0,'right',p1,'left')){
       out.push({row, i0, i1, icon:getExposedFace(p0,'right')});
     }
+  }
+  // ─── SONDE DIAG v0015 (temporaire) : pourquoi une paire ne fusionne pas ?
+  //     Activer dans la console : window.__ibDiag = true
+  if(window.__ibDiag){
+    const L=[];
+    for(let row=0; row<ROWS; row++){
+      let i0=-1; for(let c=COLS-1;c>=0;c--){ const i=row*COLS+c; if(g0[i]){i0=i;break;} }
+      let i1=-1; for(let c=0;c<COLS;c++){ const i=row*COLS+c; if(g1[i]){i1=i;break;} }
+      if(i0<0 && i1<0) continue;
+      const p0=i0>=0?g0[i0]:null, p1=i1>=0?g1[i1]:null;
+      let cl0='-',cl1='-';
+      if(p0){ let c0=true; for(let c=colOf(i0)+1;c<COLS;c++){ if(g0[row*COLS+c]){c0=false;break;} } cl0=c0?'clr':'BLK'; }
+      if(p1){ let c1=true; for(let c=0;c<colOf(i1);c++){ if(g1[row*COLS+c]){c1=false;break;} } cl1=c1?'clr':'BLK'; }
+      const fR0=p0?getExposedFace(p0,'right'):null, fL1=p1?getExposedFace(p1,'left'):null;
+      L.push(`r${row} | B0 ${p0?('c'+colOf(i0)+' R='+fR0+' '+cl0):'∅'} | B1 ${p1?('c'+colOf(i1)+' L='+fL1+' '+cl1):'∅'} | match=${(fR0&&fL1&&fR0===fL1)?'OUI':'non'}`);
+    }
+    console.log('[ibDiag]\n'+L.join('\n'));
   }
   return out;
 }
