@@ -512,9 +512,9 @@
     </div>
     <button id="undoBtnG" class="undo-btn" aria-label="Annuler">↶</button>
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
-    <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0010→0011→0012…).
+    <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0007→0008→0009…).
          Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
-    <span id="verTag">0010</span>
+    <span id="verTag">0011</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
@@ -522,9 +522,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════════╗
-   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0010                     ║
+   ║  INDICE DE VERSION (verTag dans la barre du bas) : 0011                     ║
    ║  RÈGLE : à CHAQUE nouvelle génération de code, INCRÉMENTER l'indice         ║
-   ║  (0010→0011→0012…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
+   ║  (0007→0008→0009…) ICI ET dans <span id="verTag"> du HTML. Les deux         ║
    ║  doivent toujours correspondre. Permet de vérifier sur device que GitHub    ║
    ║  a servi la bonne version malgré la latence.                                ║
    ╚══════════════════════════════════════════════════════════════════════════╝ */
@@ -1320,42 +1320,24 @@ function nextLiveBoard(dir){
   return -1;   // aucun autre plateau vivant
 }
 function navRight(){ if(B.busy||B.isAnimating||swapAnim||rotAnim)return; const tgt=nextLiveBoard(1); if(tgt<0)return;
-  window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG (lecture seule)
+  window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG
   B.busy=true;B.isAnimating=true;B.navDir=1;B.navTarget=tgt;
   showPorteProxies();
+  // v0005 : cible de zoom = emprise d'ARRIVÉE, posée AVANT que atRest ne gèle refreshZoom.
+  //  Le lissage (animate) y glisse pendant la rotation → plus de saut à la pose.
+  { const tt=zoomTargetFromSpan(window.__navDiag.to); targetCamZ=tt.z; targetCamY=tt.camY; targetCamX=tt.camX; zoomSoloZ=tt.z; }
   B.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt)); }
 function navLeft(){ if(B.busy||B.isAnimating||swapAnim||rotAnim)return; const tgt=nextLiveBoard(-1); if(tgt<0)return;
-  window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG (lecture seule)
+  window.__navDiag={from:boardSpanLogic(B.currentBoard),to:boardSpanLogic(tgt)};   // v0004 DIAG
   B.busy=true;B.isAnimating=true;B.navDir=-1;B.navTarget=tgt;
   showPorteProxies();
+  { const tt=zoomTargetFromSpan(window.__navDiag.to); targetCamZ=tt.z; targetCamY=tt.camY; targetCamX=tt.camX; zoomSoloZ=tt.z; }
   B.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt)); }
-// v89 : complétion de rotation PAR BANC (le tapis-roulant fait tourner les 2 bancs ensemble,
-//  chacun termine indépendamment). bk = index du banc qui vient de finir sa rotation.
-function onRotationCompleteBank(bk){
-  const bb=banks[bk];
-  bb.currentBoard=bb.navTarget; bb.navDir=0;
-  bb.spin.quaternion.copy(bb.targetQuat);
-  bb.isAnimating=false; bb.busy=false;
-  // recale l'affichage seulement quand TOUS les bancs sont au repos (évite recalculs partiels)
-  if(!banks.some(x=>x.isAnimating)){ assignFaces(); hidePorteProxies(); updateUI(); refreshZoom();
-    setTimeout(checkFusions,100); }
-}
-function onRotationComplete(){ onRotationCompleteBank(activeBank); }
-// v89 : TAPIS-ROULANT — un swipe fait tourner LES DEUX bancs dans le même sens (Hyp.1 couplage visuel).
-//  Chaque banc wrap sur lui-même ; rien ne traverse l'inter-banc (transfert réel = palier ultérieur).
-function navBoth(dir){
-  if(swapAnim||rotAnim||migrating) return;
-  if(banks.some(b=>b.busy||b.isAnimating)) return;        // une rotation à la fois
-  const prev=activeBank;
-  showPorteProxies();
-  for(let bk=0; bk<BANKS; bk++){
-    const bb=banks[bk];
-    const tgt=mod(bb.currentBoard+dir);                   // tapis : avance d'1 cran, wrap (pas de saut de plateau caduc)
-    bb.busy=true; bb.isAnimating=true; bb.navDir=dir; bb.navTarget=tgt;
-    bb.targetQuat.setFromAxisAngle(new THREE.Vector3(1,0,0), cubeAngleFor(tgt));
-  }
-  setActiveBank(prev);
-}
+function onRotationComplete(){ B.currentBoard=B.navTarget; B.navDir=0;
+  const _zPosed=targetCamZ, _zCam=camera.zoom;                       // v0006 DIAG : cible posée + zoom réel à la pose
+  B.spin.quaternion.copy(B.targetQuat); assignFaces(); hidePorteProxies(); B.isAnimating=false; B.busy=false; updateUI(); refreshZoom();
+  window.__poseDiag={ posed:_zPosed, cam:_zCam, final:targetCamZ };  // v0006 DIAG : final = recalcul refreshZoom
+  setTimeout(checkFusions,100); }
 
 function updateUI(){
   // v82 : chaque jeu de dots reflète le currentBoard de SON banc.
@@ -1445,8 +1427,29 @@ function startSlide(axis,row,col){
   const head=curBoard();
   // v30 : une rangée/colonne qui contient la CIBLE est figée — on n'entame pas le drag.
   if(axis==='horizontal'){
-    for(let c=0;c<COLS;c++){ const p=head[row*COLS+c]; if(p&&p.target){ dragAxis=null; return; } }
-    for(let c=0;c<COLS;c++){ const idx=row*COLS+c; const p=head[idx]; if(p) dragMembers.push({p,baseCol:c,baseRow:row}); }
+    // v0008 : tapis inter-banc → une cible dans CETTE row de l'un OU l'autre banc fige le slide.
+    if(BANKS>=2){
+      const g0=boards[bankKey(banks[0].currentLayer,banks[0].currentBoard,0)];
+      const g1=boards[bankKey(banks[1].currentLayer,banks[1].currentBoard,1)];
+      for(let c=0;c<COLS;c++){ const a=g0[row*COLS+c], b=g1[row*COLS+c];
+        if((a&&a.target)||(b&&b.target)){ dragAxis=null; return; } }
+    } else {
+      for(let c=0;c<COLS;c++){ const p=head[row*COLS+c]; if(p&&p.target){ dragAxis=null; return; } }
+    }
+    // v0010 (P3) : tapis inter-banc → on collecte les pièces des DEUX bancs sur la row,
+    //  chacune avec son SLOT d'anneau (0..3 = banc0 c0..c3 ; 4..7 = banc1 c0..c3).
+    //  baseWX = position MONDE X de la cellule (axe continu commun aux 2 bancs).
+    if(BANKS>=2){
+      const g0=boards[bankKey(banks[0].currentLayer,banks[0].currentBoard,0)];
+      const g1=boards[bankKey(banks[1].currentLayer,banks[1].currentBoard,1)];
+      for(let s=0;s<COLS*2;s++){
+        const g=(s<COLS)?g0:g1, c=(s<COLS)?s:s-COLS, bank=(s<COLS)?0:1;
+        const p=g[row*COLS+c]; if(!p||!p.mesh) continue;
+        dragMembers.push({p,slot:s,bank,baseRow:row});
+      }
+    } else {
+      for(let c=0;c<COLS;c++){ const idx=row*COLS+c; const p=head[idx]; if(p) dragMembers.push({p,baseCol:c,baseRow:row}); }
+    }
   } else {
     for(let r=0;r<ROWS;r++){ const p=head[r*COLS+col]; if(p&&p.target){ dragAxis=null; return; } }
     for(let r=0;r<ROWS;r++){ const idx=r*COLS+col; const p=head[idx]; if(p) dragMembers.push({p,baseCol:col,baseRow:r}); }
@@ -1457,7 +1460,43 @@ function startSlide(axis,row,col){
 // applique un offset continu (en unités monde) au glissement courant, avec wrap visuel
 function applySlide(off){
   dragOff=off;
-  if(dragAxis==='horizontal'){
+  if(dragAxis==='horizontal' && BANKS>=2){
+    // ════════ v0010 (P3) : TAPIS continu sur l'anneau 8 slots, 2 bancs glissent ENSEMBLE ════════
+    //  Axe monde commun : slot s → ancre worldX (échantillonnée via faceGroup.localToWorld).
+    //  Chaque pièce glisse en coordonnée de slot u = slot + off/CELL, repositionnée en MONDE
+    //  (mesh.parent.worldToLocal). Aux extrémités de l'anneau : FONDU sortie/entrée (jamais
+    //  de traversée par-dessus l'écran).
+    const RING=COLS*2;
+    const row=dragMembers.length?dragMembers[0].baseRow:dragRow;
+    const k0=bankKey(banks[0].currentLayer,banks[0].currentBoard,0);
+    const k1=bankKey(banks[1].currentLayer,banks[1].currentBoard,1);
+    // ancre monde de chaque slot (X) + la même Y de référence (la row, repère monde)
+    const anchorWX=new Array(RING);
+    let anchorWY=0;
+    const _v=new THREE.Vector3();
+    for(let s=0;s<RING;s++){
+      const key=(s<COLS)?k0:k1, c=(s<COLS)?s:s-COLS;
+      const fg=faceGroups[key]; if(!fg) continue;
+      const loc=cellToLocal(c,row,(s<COLS)?banks[0].currentBoard:banks[1].currentBoard);
+      _v.set(loc.x,loc.y,SAT_LIFT); fg.localToWorld(_v);
+      anchorWX[s]=_v.x; anchorWY=_v.y;
+    }
+    const stepU=off/CELL;                              // décalage en slots (continu)
+    const wpos=new THREE.Vector3();
+    dragMembers.forEach(m=>{
+      // u continu de la pièce le long de l'anneau (peut sortir de [0,RING))
+      let u=m.slot+stepU;
+      // interpolation de worldX entre les 2 ancres entières encadrant u (mod RING),
+      //  MAIS sans reboucler par-dessus : on étend l'axe linéairement au-delà des bords
+      //  pour que la pièce SORTE droit, et on gère l'entrée par l'autre bord en fondu.
+      const fade=interBankSlideX(u,anchorWX,RING,wpos);  // remplit wpos.x ; renvoie opacité 0..1
+      wpos.set(fade.x,anchorWY,SAT_LIFT);
+      // position MONDE → locale au faceGroup courant de la pièce (pas de reparentage ici)
+      if(m.p.mesh.parent){ m.p.mesh.parent.worldToLocal(wpos); }
+      m.p.mesh.position.copy(wpos);
+      setMeshOpacity(m.p.mesh, fade.op);
+    });
+  } else if(dragAxis==='horizontal'){
     const span=lineSpan();
     dragMembers.forEach(m=>{ const base=cellToLocal(m.baseCol,m.baseRow,B.currentBoard);
       let x=base.x+off;
@@ -1470,7 +1509,7 @@ function applySlide(off){
   } else {
     const span=colSpan();
     dragMembers.forEach(m=>{ const base=cellToLocal(m.baseCol,m.baseRow,B.currentBoard);
-      let y=base.y-off;   // glisser vers le bas = y diminue
+      let y=base.y+off;   // v0011 : sens vertical INVERSÉ (descendre le doigt = contenu descend)
       // v85 : sur une face culbutée cellToLocal inverse row → les y de row 0 et ROWS-1 sont
       //  échangés. On prend min/max EXPLICITES pour que le wrap reste correct dans les 2 cas.
       const yA=cellToLocal(m.baseCol,0,B.currentBoard).y, yB=cellToLocal(m.baseCol,ROWS-1,B.currentBoard).y;
@@ -1480,7 +1519,46 @@ function applySlide(off){
       m.p.mesh.position.y=y;
     });
   }
-  refreshZoomSlide();   // v40 : le zoom suit l'étendue PRÉDITE au cran courant (3→4→5 col)
+  if(!(dragAxis==='horizontal'&&BANKS>=2)) refreshZoomSlide();   // v40 : zoom suit l'étendue prédite
+}
+
+// v0010 (P3) helpers ───────────────────────────────────────────────
+// Donne la worldX d'une coordonnée de slot continue u, en INTERPOLANT entre ancres entières.
+//  Au-delà des bords [0..RING-1], on prolonge l'axe par le pas moyen (sortie DROITE, pas de
+//  rebouclage spatial), et on calcule une OPACITÉ qui fond la pièce sur la dernière demi-case.
+function interBankSlideX(u, anchorWX, RING, out){
+  // pas moyen entre ancres (largeur d'une case en monde) — robuste aux trous d'ancre
+  let pas=0,n=0; for(let s=0;s<RING-1;s++){ if(anchorWX[s]!=null&&anchorWX[s+1]!=null){ pas+=(anchorWX[s+1]-anchorWX[s]); n++; } }
+  pas = n? pas/n : CELL;
+  const clampU=Math.max(-1, Math.min(RING, u));
+  let x;
+  if(u>=0 && u<=RING-1){
+    const i=Math.floor(u), f=u-i;
+    const a=anchorWX[i]!=null?anchorWX[i]:(anchorWX[0]+i*pas);
+    const b=anchorWX[i+1]!=null?anchorWX[i+1]:(a+pas);
+    x=a+(b-a)*f;
+  } else if(u<0){
+    x=(anchorWX[0]!=null?anchorWX[0]:0)+u*pas;          // sort à GAUCHE, prolongé
+  } else {
+    x=(anchorWX[RING-1]!=null?anchorWX[RING-1]:0)+(u-(RING-1))*pas; // sort à DROITE, prolongé
+  }
+  // opacité : pleine dans [0, RING-1], fond sur la marge d'une case au-delà des bords
+  let op=1;
+  if(u<0)        op=Math.max(0,1+u);            // u:-1→0  ⇒ op:0→1
+  else if(u>RING-1) op=Math.max(0,1-(u-(RING-1))); // u:RING-1→RING ⇒ op:1→0
+  out.x=x; return {x, op};
+}
+// applique une opacité uniforme à tout le mesh d'un domino, en mémorisant la base pour restaurer.
+function setMeshOpacity(mesh, op){
+  mesh.traverse(c=>{ if(c.material&&'opacity'in c.material){
+    if(c.userData._obase===undefined) c.userData._obase=c.material.opacity;
+    c.material.opacity = c.userData._obase*op;
+  }});
+}
+function clearMeshOpacity(mesh){
+  mesh.traverse(c=>{ if(c.material&&'opacity'in c.material&&c.userData._obase!==undefined){
+    c.material.opacity=c.userData._obase; delete c.userData._obase;
+  }});
 }
 // v40 : zoom pendant le glissement = étendue logique PRÉDITE au nombre de crans courant
 // (et non les positions wrappées, qui feraient osciller le zoom). On simule la rangée/colonne
@@ -1495,12 +1573,62 @@ function refreshZoomSlide(){
 // fin de glissement : calcule le nombre de crans et réécrit la grille logique (wrap-around)
 function commitSlide(){
   const head=curBoard();
+  // v0010 (P3) : restaurer l'opacité de toute pièce ayant fondu pendant le drag inter-banc.
+  dragMembers.forEach(m=>{ if(m.p&&m.p.mesh) clearMeshOpacity(m.p.mesh); });
   let steps;
   // un slide qui ne décale rien (multiple du tour complet) ne crée pas d'entrée d'historique
   const rawSteps=Math.round(dragOff/CELL);
-  const span=(dragAxis==='horizontal')?COLS:ROWS;
+  // v0008 : l'anneau horizontal inter-banc fait COLS*2 (8) cases ; mono-banc reste COLS.
+  const span=(dragAxis==='horizontal')?((BANKS>=2)?COLS*2:COLS):ROWS;
   if(((rawSteps%span)+span)%span!==0){ pushHistory(); }
-  if(dragAxis==='horizontal'){
+  // ════════════════════════════════════════════════════════════════════
+  //  v0008 — TAPIS-ROULANT INTER-BANC (P1). Le slide horizontal n'opère plus
+  //  sur les 4 cases du seul banc touché : il fait circuler la ROW sur l'ANNEAU
+  //  CONTINU 8 CASES = [banc0 c0..c3][banc1 c0..c3], décalage rigide d'un cran,
+  //  traversée du gap + rebouclage. Reparentage inter-banc via attach() (préserve
+  //  le monde), comme tryInterBankFusion. Rotations des bancs INDÉPENDANTES.
+  //  Row partagé des deux côtés (cf. interBankPairs) : pas d'inversion de steps.
+  // ════════════════════════════════════════════════════════════════════
+  let ibTransfers=null;   // pièces qui changent de banc → attach() après réécriture
+  if(dragAxis==='horizontal' && BANKS>=2){
+    steps=rawSteps;
+    const row=dragRow;
+    const RING=COLS*2;                                   // 8
+    const k0=bankKey(banks[0].currentLayer, banks[0].currentBoard, 0);
+    const k1=bankKey(banks[1].currentLayer, banks[1].currentBoard, 1);
+    const g0=boards[k0], g1=boards[k1];
+    // lecture de l'anneau : slot 0..3 → g0[row,c] ; slot 4..7 → g1[row,c-COLS]
+    const ring=[];
+    for(let s=0;s<RING;s++){
+      const g=(s<COLS)?g0:g1, c=(s<COLS)?s:s-COLS;
+      ring[s]=g[row*COLS+c];
+    }
+    // sortie décalée d'un cran (même convention que le wrap 4 cases : src = s-steps)
+    const out=[];
+    for(let s=0;s<RING;s++){ const src=((s-steps)%RING+RING)%RING; out[s]=ring[src]; }
+    // réécriture des 2 grilles + identité (key/face/layer/bank) + liste des transferts.
+    //  v0009 : on marque les pièces qui WRAPPENT (franchissent la coupure de l'anneau).
+    //   Convention src = s - steps ; si le src brut sort de [0,RING) la pièce a fait le tour
+    //   → ne doit PAS traverser l'écran (sinon "boucle par-dessus"), mais fondre au bord.
+    ibTransfers=[];
+    for(let s=0;s<RING;s++){
+      const destBank=(s<COLS)?0:1;
+      const destKey =(s<COLS)?k0:k1;
+      const g       =(s<COLS)?g0:g1;
+      const c       =(s<COLS)?s:s-COLS;
+      const rawSrc  = s-steps;                        // src AVANT modulo
+      const wraps   = (rawSrc<0 || rawSrc>=RING);     // a fait le tour de l'anneau
+      const p=out[s];
+      g[row*COLS+c]=p;
+      if(p){
+        if(p.key!==destKey){ ibTransfers.push({p,destKey}); }
+        p.key=destKey; p.bank=destBank;
+        p.face=banks[destBank].currentBoard; p.layer=banks[destBank].currentLayer;
+        p._wrap = wraps;                              // lu par la boucle de snap
+      }
+    }
+  } else if(dragAxis==='horizontal'){
+    // mono-banc (BANKS<2) : comportement d'origine
     steps=rawSteps;
     const row=dragRow;
     const newRow=[];
@@ -1510,19 +1638,42 @@ function commitSlide(){
     // v85 : dragOff est en repère ÉCRAN (anime le visuel) et il est MIROITÉ sur les faces
     //  culbutées (cf. applySlide). Pour réécrire la grille LOGIQUE dans le bon sens, on
     //  ré-inverse steps sur ces faces. Sans ça, visuel et logique divergent → désorganisation.
-    steps = faceFlipped(B.currentBoard) ? -rawSteps : rawSteps;
+    //  v0011 : sens vertical inversé (applySlide passe en +off) → on néglige le mapping ici aussi.
+    steps = faceFlipped(B.currentBoard) ? rawSteps : -rawSteps;
     const col=dragCol;
     const newCol=[];
     for(let r=0;r<ROWS;r++){ const src=((r-steps)%ROWS+ROWS)%ROWS; newCol[r]=head[src*COLS+col]; }
     for(let r=0;r<ROWS;r++){ head[r*COLS+col]=newCol[r]; }
   }
-  // animer chaque pièce vers sa case logique finale (snap doux via swapAnim)
+  // reparentage des pièces qui ont traversé le gap : attach() PRÉSERVE la position
+  //  monde → la pièce part visuellement du bon endroit avant le snap (swapAnim).
+  if(ibTransfers){
+    ibTransfers.forEach(({p,destKey})=>{
+      if(p.mesh && p.mesh.parent!==faceGroups[destKey]) faceGroups[destKey].attach(p.mesh);
+    });
+  }
+  // animer chaque pièce vers sa case logique finale (snap doux via swapAnim).
+  //  Tapis inter-banc : on parcourt les DEUX grilles courantes ; sinon le seul banc touché.
   const pairs=[];
-  head.forEach((p,idx)=>{ if(!p||!p.mesh)return;
+  const snapGrids = ibTransfers!==null
+    ? [ boards[bankKey(banks[0].currentLayer,banks[0].currentBoard,0)],
+        boards[bankKey(banks[1].currentLayer,banks[1].currentBoard,1)] ]
+    : [head];
+  snapGrids.forEach(grid=>{ grid.forEach((p)=>{ if(!p||!p.mesh)return;
     const from=p.mesh.position.clone();
     placePiece(p,0); const to=p.mesh.position.clone();
-    if(!from.equals(to)){ pairs.push({mesh:p.mesh,from,to}); p.mesh.position.copy(from); }
-  });
+    if(p._wrap){
+      // v0009 : pièce qui a fait le tour de l'anneau → NE traverse PAS l'écran.
+      //  Elle apparaît directement à sa case d'entrée (to) par un FONDU (pas de glissement).
+      p.mesh.position.copy(to);
+      pairs.push({mesh:p.mesh,from:to,to,wrap:true});
+      p._wrap=false;
+    } else if(!from.equals(to)){
+      pairs.push({mesh:p.mesh,from,to});
+      p.mesh.position.copy(from);
+    }
+    if(p._wrap===true) p._wrap=false;   // garde-fou : jamais de flag résiduel
+  }); });
   dragMembers=[]; dragAxis=null; sliding=false;
   refreshZoom();   // v40 : cale le zoom sur l'étendue logique finale après le slide
   if(!pairs.length){ B.busy=false; setTimeout(checkFusions,60); return; }
@@ -1530,10 +1681,21 @@ function commitSlide(){
   swapAnim={pairs,t:0,after:()=>{ B.busy=false; setTimeout(checkFusions,80); }};
 }
 
-function tickSwap(dt){ if(!swapAnim)return; swapAnim.t+=dt*5.0;
+function tickSwap(dt){ if(!swapAnim)return;
+  // v0009 : à l'amorce, mettre les pièces wrap à opacity 0 (elles vont fondre vers 1).
+  if(!swapAnim._init){ swapAnim._init=true;
+    swapAnim.pairs.forEach(pp=>{ if(pp.wrap){ pp.mesh.traverse(c=>{ if(c.material&&'opacity'in c.material){
+      if(pp._o===undefined)pp._o=[]; pp._o.push({c,base:c.material.opacity}); c.material.opacity=0; } }); } });
+  }
+  swapAnim.t+=dt*5.0;
   const pr=Math.min(1,swapAnim.t); const e=pr<0.5?2*pr*pr:(1-Math.pow(-2*pr+2,2)/2);
-  swapAnim.pairs.forEach(pp=>pp.mesh.position.lerpVectors(pp.from,pp.to,e));
-  if(pr>=1){ const cb=swapAnim.after; swapAnim=null; assignFaces(); if(cb)cb(); } }
+  swapAnim.pairs.forEach(pp=>{
+    if(pp.wrap){ if(pp._o) pp._o.forEach(o=>{ o.c.material.opacity=o.base*pr; }); }   // fondu d'entrée
+    else pp.mesh.position.lerpVectors(pp.from,pp.to,e);
+  });
+  if(pr>=1){
+    swapAnim.pairs.forEach(pp=>{ if(pp.wrap&&pp._o) pp._o.forEach(o=>{ o.c.material.opacity=o.base; }); });
+    const cb=swapAnim.after; swapAnim=null; assignFaces(); if(cb)cb(); } }
 
 // rotation au tap façon prisme : le mesh PIVOTE physiquement (slerp 250ms easeOutCubic),
 // le logo tourne en continu. À la fin : rotation logique +delta, reset mesh à baseQuat, texture.
@@ -1742,7 +1904,7 @@ canvas.addEventListener('pointerup',e=>{
     if(!dragging){
       // v60a2 : bi-layer retiré → le geste de bascule-layer est NEUTRE (ne fait plus rien).
       // v85 : VERTICAL ample → rotation cube (changer de plateau). Geste haut/bas, plus gauche/droite.
-      if(Math.abs(ndy)>=40 && Math.abs(ndy)>Math.abs(ndx)){ ndy>0?navBoth(1):navBoth(-1); return; }   // v89 tapis : 2 bancs ensemble
+      if(Math.abs(ndy)>=40 && Math.abs(ndy)>Math.abs(ndx)){ ndy>0?navRight():navLeft(); return; }
     }
   }
   if(!dragging){ return; }
@@ -1768,7 +1930,7 @@ canvas.addEventListener('pointerup',e=>{
   if(dragAxis){ commitSlide(); }
   dragPiece=null;
 });
-canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ assignFaces(); dragAxis=null; dragMembers=[]; refreshZoom(); } dragPiece=null; });
+canvas.addEventListener('pointercancel',()=>{ clearTimeout(pressTimer); navSwipeX=navSwipeY=null; dragging=false; sliding=false; if(dragAxis){ dragMembers.forEach(m=>{ if(m.p&&m.p.mesh) clearMeshOpacity(m.p.mesh); }); assignFaces(); dragAxis=null; dragMembers=[]; refreshZoom(); } dragPiece=null; });
 // v60n : FIX TACTILE iOS. Sur un canvas tourné -90°, Safari interprète mal touch-action et
 // déclenche un scroll natif → pointercancel → le slide ne démarre jamais. On bloque le scroll
 // natif sur le canvas pendant le geste (listener NON passif, sinon preventDefault est ignoré).
@@ -1794,11 +1956,11 @@ navBarEl.addEventListener('pointerdown',e=>{ dotDownX=e.clientX; dotMoved=false;
 navBarEl.addEventListener('pointermove',e=>{ if(dotDownX==null)return; if(Math.abs(e.clientX-dotDownX)>20){ dotMoved=true; } });
 navBarEl.addEventListener('pointerup',e=>{
   if(dotDownX==null)return; const dx=e.clientX-dotDownX; dotDownX=null;
-  if(dotMoved && Math.abs(dx)>=20){ if(!banks.some(b=>b.busy||b.isAnimating)){ dx>0?navBoth(1):navBoth(-1); } e.stopPropagation(); }   // v89 tapis
+  if(dotMoved && Math.abs(dx)>=20){ if(!B.busy&&!B.isAnimating){ dx>0?navRight():navLeft(); } e.stopPropagation(); }
 });
 navBarEl.addEventListener('pointercancel',()=>{ dotDownX=null; });
 // chevrons : tap = nav d'un cran
-navBarEl.querySelectorAll('.chev').forEach((c,idx)=>c.addEventListener('click',e=>{ if(banks.some(b=>b.busy||b.isAnimating))return; idx===0?navBoth(-1):navBoth(1); e.stopPropagation(); }));   // v89 tapis
+navBarEl.querySelectorAll('.chev').forEach((c,idx)=>c.addEventListener('click',e=>{ if(B.busy||B.isAnimating)return; idx===0?navLeft():navRight(); e.stopPropagation(); }));
 
 // ════════════════════════════════════════════
 //  FUSION — portée du V4 : faces exposées qui se touchent, identiques (icône+état)
@@ -2738,13 +2900,10 @@ const SYS = {
   }
 };
 function animate(){ requestAnimationFrame(animate); const t=clock.getElapsedTime(); const dtRaw=t-last; last=t; const dt=dtRaw*TS; tScaled+=dt;
-  // v89 : ROTATION PAR BANC — chaque banc animé slerpe vers sa cible et finit indépendamment.
-  //  (tapis-roulant : navBoth a armé les 2 ; le swipe mono-banc n'en arme qu'un → identique à avant.)
-  for(let bk=0; bk<BANKS; bk++){ const bb=banks[bk];
-    if(bb.isAnimating){
-      bb.spin.quaternion.slerp(bb.targetQuat,0.12*TS);
-      if(1-Math.abs(bb.spin.quaternion.dot(bb.targetQuat))<0.0001){ bb.spin.quaternion.copy(bb.targetQuat); onRotationCompleteBank(bk); }
-    }
+  if(B.isAnimating){
+    // ROTATION DU CUBE : slerp doux vers l'orientation cible (façon mada)
+    B.spin.quaternion.slerp(B.targetQuat,0.12*TS);
+    if(1-Math.abs(B.spin.quaternion.dot(B.targetQuat))<0.0001){ B.spin.quaternion.copy(B.targetQuat); onRotationComplete(); }
   }
   tickSwap(dt);
   tickRot(dt);
