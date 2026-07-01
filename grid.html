@@ -512,7 +512,7 @@
     <div class="nav-bar" id="navBar1"><span class="chev">‹</span><div class="nav-dots" id="navDots1"></div><span class="chev">›</span></div>
     <!-- v0003 : INDICE DE VERSION. À INCRÉMENTER À CHAQUE NOUVELLE GÉNÉRATION DE CODE (0007→0008→0009…).
          Sert à vérifier sur device que GitHub a bien servi la dernière version malgré la latence. -->
-    <span id="verTag">0016</span>
+    <span id="verTag">0018</span>
   </div>
   <button id="menuToggle" aria-label="Menu">☰</button>
   </div><!-- /#stage -->
@@ -1081,12 +1081,12 @@ function syncPortes(srcBoard){
   const L=B.currentLayer;
   // v55 : une porte est partagée sur les 8 plateaux (NLAYERS × NBOARDS). Elle cesse
   // d'être une porte seulement si elle est vide sur TOUS les plateaux de TOUS les layers.
-  B.PORTE_POSITIONS=B.PORTE_POSITIONS.filter(idx=>{ for(let ly=0;ly<NLAYERS;ly++){ for(let f=0;f<NBOARDS;f++){ if(boards[boardKey(ly,f)] && boards[boardKey(ly,f)][idx]) return true; } } return false; });
+  B.PORTE_POSITIONS=B.PORTE_POSITIONS.filter(idx=>{ for(let ly=0;ly<NLAYERS;ly++){ for(let f=0;f<NBOARDS;f++){ if(boards[bankKey(ly,f,B.bank)] && boards[bankKey(ly,f,B.bank)][idx]) return true; } } return false; });
   for(const idx of B.PORTE_POSITIONS){
-    const src=boards[boardKey(L,srcBoard)][idx];
+    const src=boards[bankKey(L,srcBoard,B.bank)][idx];
     for(let ly=0;ly<NLAYERS;ly++){ for(let f=0;f<NBOARDS;f++){
       if(ly===L && f===srcBoard) continue;        // la source fait foi
-      const key=boardKey(ly,f); if(!boards[key]) continue;
+      const key=bankKey(ly,f,B.bank); if(!boards[key]) continue;
       const cur=boards[key][idx];
       if(!src){ if(cur){ if(cur.mesh)removeDomino(cur.mesh); boards[key][idx]=null; } continue; }
       // v58 (A1) : avant d'écraser un occupant d'ORIGINE (pas une copie-porte), le sauvegarder.
@@ -1119,7 +1119,7 @@ function commutePorte(i){
     // la copie-porte ; si un domino d'origine avait été écrasé ET que la case est LIBRE, on le
     // restaure depuis le tiroir. La case courante (source) est conservée telle quelle.
     for(let ly=0;ly<NLAYERS;ly++){ for(let f=0;f<NBOARDS;f++){
-      const key=boardKey(ly,f); if(!boards[key]) continue;
+      const key=bankKey(ly,f,B.bank); if(!boards[key]) continue;
       if(ly===B.currentLayer && f===B.currentBoard){ const p=boards[key][i]; if(p) placePiece(p); continue; }
       const cur=boards[key][i];
       if(cur){ if(cur.mesh) removeDomino(cur.mesh); boards[key][i]=null; }
@@ -1410,6 +1410,7 @@ function startRotAnim(p,delta){
 //  - snap au cran le plus proche en fin de drag
 // ════════════════════════════════════════════
 let dragging=false, dragAxis=null, dragRow=-1, dragCol=-1;
+const DRAG_THRESH=6;   // v0018 : seuil de déclenchement du drag (px) — abaissé de 10 à 6, plus réactif
 let dragStartX=0, dragStartY=0, dragStartT=0, dragOff=0;
 let dragPiece=null;           // pièce sous le doigt (pour tap)
 let dragMembers=[];           // {p, base} pièces de la ligne/colonne en cours de glissement
@@ -1456,6 +1457,16 @@ function startSlide(axis,row,col){
   if(dragAxis) sliding=true;   // glissement effectivement engagé
 }
 
+// v0018 : accroche magnétique VISUELLE vers le cran le plus proche pendant le drag du tapis
+//  inter-banc. N'affecte que le rendu (u affiché) ; stepU/dragOff restent la vérité logique
+//  utilisée par commitSlide. Forte près d'un cran entier, nulle à mi-case (pas de lutte au doigt).
+function magnetizeU(u){
+  const i=Math.round(u), f=u-i;                 // f ∈ [-0.5, 0.5]
+  const t=Math.min(1,Math.abs(f)*2);            // 0 (sur le cran) → 1 (à mi-case)
+  const ease=t*t*(3-2*t);                       // smoothstep
+  const pull=0.35*(1-ease);                     // accroche max 0.35, décroît vers la mi-case
+  return u - f*pull;
+}
 // applique un offset continu (en unités monde) au glissement courant, avec wrap visuel
 function applySlide(off){
   dragOff=off;
@@ -1484,7 +1495,7 @@ function applySlide(off){
     const wpos=new THREE.Vector3();
     dragMembers.forEach(m=>{
       // u continu de la pièce le long de l'anneau (peut sortir de [0,RING))
-      let u=m.slot+stepU;
+      let u=magnetizeU(m.slot+stepU);   // v0018 : accroche visuelle vers le cran le plus proche
       // interpolation de worldX entre les 2 ancres entières encadrant u (mod RING),
       //  MAIS sans reboucler par-dessus : on étend l'axe linéairement au-delà des bords
       //  pour que la pièce SORTE droit, et on gère l'entrée par l'autre bord en fondu.
@@ -1686,7 +1697,7 @@ function tickSwap(dt){ if(!swapAnim)return;
     swapAnim.pairs.forEach(pp=>{ if(pp.wrap){ pp.mesh.traverse(c=>{ if(c.material&&'opacity'in c.material){
       if(pp._o===undefined)pp._o=[]; pp._o.push({c,base:c.material.opacity}); c.material.opacity=0; } }); } });
   }
-  swapAnim.t+=dt*5.0;
+  swapAnim.t+=dt*8.0;   // v0018 : snap plus rapide (était 5.0)
   const pr=Math.min(1,swapAnim.t); const e=pr<0.5?2*pr*pr:(1-Math.pow(-2*pr+2,2)/2);
   swapAnim.pairs.forEach(pp=>{
     if(pp.wrap){ if(pp._o) pp._o.forEach(o=>{ o.c.material.opacity=o.base*pr; }); }   // fondu d'entrée
@@ -1873,11 +1884,11 @@ canvas.addEventListener('pointerdown',e=>{
 canvas.addEventListener('pointermove',e=>{
   if(!dragging)return;
   const dx=LX(e)-downX, dy=LY(e)-downY;
-  if(Math.abs(dx)>10||Math.abs(dy)>10){ moved=true; clearTimeout(pressTimer); }
+  if(Math.abs(dx)>DRAG_THRESH||Math.abs(dy)>DRAG_THRESH){ moved=true; clearTimeout(pressTimer); }
   if(lockedPiece) return;   // pièce flottante : pas de slide ; le swipe est traité au pointerup (nav)
   if(dragAxis===null){
     if(rotAnim) return;   // rotation en cours : on n'initie pas de glissement (seul le tap empile)
-    if(Math.abs(dx)>10||Math.abs(dy)>10){
+    if(Math.abs(dx)>DRAG_THRESH||Math.abs(dy)>DRAG_THRESH){
       dragAxis=Math.abs(dx)>Math.abs(dy)?'horizontal':'vertical';
       startSlide(dragAxis,dragRow,dragCol);
     } else return;
